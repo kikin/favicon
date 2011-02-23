@@ -77,6 +77,7 @@ class PrintFavicon(BaseHandler):
     try:
       rootDomainFaviconResult = urlopen(rootIconPath)
       if self.isValidIconResponse(rootDomainFaviconResult)[0]:
+        self.cacheIconLoc(rootIconPath)
         return True
     except:
       print_exc()
@@ -95,6 +96,7 @@ class PrintFavicon(BaseHandler):
             pageIconPath = urljoin(self.targetPath, pageIconHref)
             pagePathFaviconResult = urlopen(pageIconPath)
             if self.isValidIconResponse(pagePathFaviconResult)[0]:
+              self.cacheIconLoc(pageIconPath)
               return True
     except:
       print_exc()
@@ -103,6 +105,9 @@ class PrintFavicon(BaseHandler):
 
   def cacheIcon(self, icon):
     self.mc.set('icon-%s' % self.targetDomain, icon, time=PrintFavicon.MC_CACHE_TIME)
+
+  def cacheIconLoc(self, loc):
+    self.mc.set('icon_loc-%s' % self.targetDomain, str(loc), time=PrintFavicon.MC_CACHE_TIME)
 
   def iconInCache(self):
     icon = self.mc.get('icon-%s' % self.targetDomain)
@@ -165,6 +170,7 @@ class PrintFavicon(BaseHandler):
           # Use default
           self.icon = self.default_icon 
           self.cacheIcon('DEFAULT')
+          self.cacheIconLoc('DEFAULT')
           self.mc.incr('counter-defaults')
 
     return self.writeIcon()
