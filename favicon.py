@@ -4,13 +4,17 @@ import json
 
 from re import compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
-from urllib import urlopen
+from urllib import FancyURLopener
 from datetime import datetime, timedelta
 from BeautifulSoup import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from memcache import Client
+from logging import handlers, DEBUG, INFO, WARNING
 
-from traceback import print_exc
+from globals import *
+
+class FakeUserAgentOpener(FancyURLopener):
+  version = 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; rv:1.9.2.13) Gecko/20101203 Firefox/3.6.13'
 
 class BaseHandler(object):
 
@@ -27,104 +31,95 @@ class BaseHandler(object):
 
 class PrintFavicon(BaseHandler):
 
-  ICON_MIMETYPE_BLACKLIST = [
-    'application/xml',
-    'text/html',
-  ]
-
-  MIN_ICON_LENGTH = 100
-  MAX_ICON_LENGTH = 20000
-  EMPTY_ICON_LENGTH = 1150
-
-  MC_CACHE_TIME = 2419200 # seconds (28 days)
-
   def __init__(self):
     super(PrintFavicon, self).__init__()
-    
-    with open('favicon.gif', 'r') as f:
-      self.default_icon = f.read()
-    
-    self.loader = FileSystemLoader('templates')
-    self.env = Environment(loader=self.loader)
-    
-    self.mc = Client(['127.0.0.1:11211'], debug=0)
-    self._init_counters()
 
-  def _init_counters(self):
+    self.urlopener = FakeUserAgentOpener()
+    
+    self.default_icon = self.urlopener.open(DEFAULT_FAVICON_LOC).read()
+    
+    self.env = Environment(loader=FileSystemLoader('/opt/favicon_env/src/templates'))
+    
+    self.mc = Client(['mea.us.kikin.com:11211'], debug=0)
+
+    # Initialize counters
     for counter in ['requests', 'hits', 'defaults']:
       self.mc.add('counter-%s' % counter, '0')
 
-  def isValidIconResponse(self, iconResponse):
+  def validateIconResponse(self, iconResponse):
     if iconResponse.getcode() != 200:
-      return (False, 'Recieved non-success code %d' % iconResponse.getcode())
+      cherrypy.log('%d: Not a valid success code' % iconResponse.getcode(), severity=INFO)
+      return None
 
     iconContentType = iconResponse.info().gettype()
-    if iconContentType in PrintFavicon.ICON_MIMETYPE_BLACKLIST:
-      return (False, 'Content-Type %s is blacklisted' % iconContentType)
+    if iconContentType in ICON_MIMETYPE_BLACKLIST:
+      cherrypy.log('Content-Type %s is blacklisted' % iconContentType, severity=INFO)
+      return None
 
     icon = iconResponse.read()
     iconLength = len(icon)
-    if iconLength < PrintFavicon.MIN_ICON_LENGTH or iconLength > PrintFavicon.MAX_ICON_LENGTH:
-      return (False, 'Length=%d exceeds allowed range' % iconLength)
 
-    self.icon = icon
-    self.cacheIcon(icon)
+    if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
+      cherrypy.log('Length=%d exceeds allowed range' % iconLength, severity=INFO)
+  
+    return icon
 
-    return (True,)
-
-  def iconAtRoot(self):
-    rootIconPath = self.targetDomain + '/favicon.ico'
+  # Icon at [domain]/favicon.ico?
+  def iconAtRoot(self, targetDomain):
+    rootIconPath = targetDomain + '/favicon.ico'
     try:
-      rootDomainFaviconResult = urlopen(rootIconPath)
-      if self.isValidIconResponse(rootDomainFaviconResult)[0]:
-        self.cacheIconLoc(rootIconPath)
-        return True
+      rootDomainFaviconResult = self.urlopener.open(rootIconPath)
+      rootIcon = self.validateIconResponse(rootDomainFaviconResult)
+      if rootIcon:
+        cherrypy.log('Found favicon for %s at domain root' % targetDomain, severity=DEBUG)
+        self.cacheIcon(targetDomain, rootIcon, rootIconPath)
+        return rootIcon
     except:
-      print_exc()
-      pass
-    return False
+      cherrypy.log('Error fetching favicon at root for domain : %s' % targetDomain, severity=WARNING, traceback=True)
 
-  def iconInPage(self):
+  # Icon specified in page?
+  def iconInPage(self, targetDomain, targetPath):
+    cherrypy.log('Attempting to locate embedded favicon link in page for %s' % targetPath, severity=DEBUG)
     try:
-      rootDomainPageResult = urlopen(self.targetPath)
+      rootDomainPageResult = self.urlopener.open(targetPath)
       if rootDomainPageResult.getcode() == 200:
         pageSoup = BeautifulSoup(rootDomainPageResult.read())
         pageSoupIcon = pageSoup.find('link', rel=compile('^(shortcut|icon|shortcut icon)$', IGNORECASE))
         if pageSoupIcon:
           pageIconHref = pageSoupIcon.get('href')
           if pageIconHref:
-            pageIconPath = urljoin(self.targetPath, pageIconHref)
-            pagePathFaviconResult = urlopen(pageIconPath)
-            if self.isValidIconResponse(pagePathFaviconResult)[0]:
-              self.cacheIconLoc(pageIconPath)
-              return True
+            pageIconPath = urljoin(targetPath, pageIconHref if not pageIconHref[0] == '/' else pageIconHref[1:])
+            pagePathFaviconResult = self.urlopener.open(pageIconPath)
+            pageIcon = self.validateIconResponse(pagePathFaviconResult)
+            if pageIcon:
+              cherrypy.log('Found favicon for %s at %s' % (targetDomain, pageIconPath), severity=DEBUG)
+              self.cacheIcon(targetDomain, pageIcon, pageIconPath)
+              return pageIcon
+        else:
+          cherrypy.log('No link tag found in %s' % targetPath, severity=DEBUG)
+      else:
+        cherrypy.log('Recieved non-success response code for %s' % targetPath, severity=INFO)
     except:
-      print_exc()
-      pass
-    return False
+      cherrypy.log('Error extracting favicon from page for: %s' % targetPath, severity=WARNING, traceback=True)
 
-  def cacheIcon(self, icon):
-    self.mc.set('icon-%s' % self.targetDomain, icon, time=PrintFavicon.MC_CACHE_TIME)
+  def cacheIcon(self, domain, icon, loc):
+    self.mc.set_multi({'icon-%s' % domain : icon, 'icon_loc-%s' % domain : str(loc)}, time=MC_CACHE_TIME)
 
-  def cacheIconLoc(self, loc):
-    self.mc.set('icon_loc-%s' % self.targetDomain, str(loc), time=PrintFavicon.MC_CACHE_TIME)
-
-  def iconInCache(self):
-    icon = self.mc.get('icon-%s' % self.targetDomain)
+  def iconInCache(self, targetDomain):
+    icon = self.mc.get('icon-%s' % targetDomain)
     if icon:
+      cherrypy.log('Cache hit : %s' % targetDomain, severity=DEBUG)
       self.mc.incr('counter-hits')
       cherrypy.response.headers['X-Cache'] = 'Hit'
       if icon == 'DEFAULT':
         self.mc.incr('counter-defaults')
-        self.icon = self.default_icon
+        return self.default_icon
       else:
-        self.icon = icon
-      return True
-    return False
+        return icon
 
-  def writeIcon(self):
+  def writeIcon(self, icon):
     self.writeHeaders()
-    return self.icon
+    return icon
 
   def writeHeaders(self, fmt='%a, %d %b %Y %H:%M:%S %z'):
     # MIME Type
@@ -133,6 +128,16 @@ class PrintFavicon(BaseHandler):
     # Set caching headers
     cherrypy.response.headers['Cache-Control'] = 'public, max-age=2592000'
     cherrypy.response.headers['Expires'] = (datetime.now() + timedelta(days=30)).strftime(fmt)
+
+  def parse(self, url):
+    # Get page path
+    targetPath = self.urldecode(url)
+
+    # Split path to get domain
+    targetURL = urlparse(targetPath)
+    targetDomain =  '%s://%s' % (targetURL.scheme, targetURL.netloc)
+
+    return (targetPath, targetDomain)
 
   @cherrypy.expose
   def index(self):
@@ -143,41 +148,58 @@ class PrintFavicon(BaseHandler):
 
   @cherrypy.expose
   def test(self):
-    topSites = []
-    with open('topsites.txt', 'r') as f:
-      for line in f:
-        topSites.append(line.strip())
-
+    topSites = open('/opt/favicon_env/src/topsites.txt', 'r').read().split()
     template = self.env.get_template('test.html')
     return template.render(topSites=topSites)
 
   @cherrypy.expose
-  def default(self, url):
+  def clear(self, url):
+    cherrypy.log('Incoming cache invalidation request : %s' % url, severity=DEBUG)
+
+    targetPath, targetDomain = self.parse(url)
+    cherrypy.log('Clearing cache entry for %s' % targetDomain, severity=INFO)
+
+    self.mc.delete_multi(['icon-%s' % targetDomain, 'icon_loc-%s' % targetDomain])
+
+  @cherrypy.expose
+  def favicon(self, url, skipCache=False):
+    cherrypy.log('Incoming request : %s (skipCache=%s)' % (url, skipCache), severity=DEBUG)
+
     self.mc.incr('counter-requests')
 
-    # Get page path
-    self.targetPath = self.urldecode(url)
+    targetPath, targetDomain = self.parse(url)
 
-    # Split path to get domain
-    targetURL = urlparse(self.targetPath)
-    self.targetDomain =  '%s://%s' % (targetURL.scheme, targetURL.netloc)
+    icon = (not skipCache and self.iconInCache(targetDomain)) or \
+           self.iconAtRoot(targetDomain) or \
+           self.iconInPage(targetDomain, targetPath)
 
-    if not self.iconInCache():
-      # Icon at [domain]/favicon.ico?
-      if not self.iconAtRoot():
-        # Icon specified in page?
-        if not self.iconInPage():
-          # Use default
-          self.icon = self.default_icon 
-          self.cacheIcon('DEFAULT')
-          self.cacheIconLoc('DEFAULT')
-          self.mc.incr('counter-defaults')
+    if not icon:
+      icon = self.default_icon
+      cherrypy.log('Falling back to default icon for : %s' % targetDomain, severity=WARNING)
+      self.cacheIcon(targetDomain, 'DEFAULT', DEFAULT_FAVICON_LOC)
+      self.mc.incr('counter-defaults')
 
-    return self.writeIcon()
+    return self.writeIcon(icon)
 
-def main():
-  conf = os.path.join(os.path.dirname(__file__), 'favicon.conf')
-  cherrypy.quickstart(PrintFavicon(), config=conf)
 
 if __name__ == '__main__':
-  main()
+  # Remove the default FileHandlers if present.
+  cherrypy.log.error_file = ''
+  cherrypy.log.access_file = ''
+
+  # Make a new RotatingFileHandler for the error log.
+  fname = getattr(cherrypy.log, 'rot_error_file', 'error.log')
+  handler = handlers.TimedRotatingFileHandler(fname, 'midnight', 1, 7)
+  handler.setLevel(DEBUG)
+  handler.setFormatter(cherrypy._cplogging.logfmt)
+  cherrypy.log.error_log.addHandler(handler)
+
+  # Make a new RotatingFileHandler for the access log.
+  fname = getattr(cherrypy.log, 'rot_access_file', 'access.log')
+  handler = handlers.TimedRotatingFileHandler(fname, 'midnight', 1, 7)
+  handler.setLevel(DEBUG)
+  handler.setFormatter(cherrypy._cplogging.logfmt)
+  cherrypy.log.access_log.addHandler(handler)
+
+  conf = os.path.join(os.path.dirname(__file__), 'dev.conf')
+  cherrypy.quickstart(PrintFavicon(), config=conf)
