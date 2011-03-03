@@ -2,7 +2,7 @@ import cherrypy
 import os.path
 import json
 
-from re import compile, MULTILINE, IGNORECASE
+from re import search, compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
 from urllib2 import HTTPRedirectHandler, HTTPCookieProcessor, Request, build_opener
 from datetime import datetime, timedelta
@@ -89,7 +89,7 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Error fetching favicon at root for domain : %s\n' % targetDomain, severity=WARNING, traceback=True)
 
   # Icon specified in page?
-  def iconInPage(self, targetDomain, targetPath):
+  def iconInPage(self, targetDomain, targetPath, refresh=True):
     cherrypy.log('Attempting to locate embedded favicon link in page for %s' % targetDomain, severity=DEBUG)
 
     try:
@@ -121,11 +121,22 @@ class PrintFavicon(BaseHandler):
               cherrypy.log('Found favicon for : %s at : %s' % (targetDomain, pageIconPath), severity=DEBUG)
               self.cacheIconLoc(targetDomain, pageIconPath)
               return (pageIcon, pageIconPath)
+
         else:
+          if refresh:
+            for meta in pageSoup.findAll('meta'):
+              if meta.get('http-equiv').lower() == 'refresh':
+                match = search('url=([^;]+)', meta.get('content', ''), flags=IGNORECASE)
+                if match:
+                  refreshPath = urljoin(rootDomainPageResult.geturl(), match.group(1))
+                  cherrypy.log('Processing refresh directive : %s for %s' % (refreshPath, targetDomain), severity=INFO)
+                  return self.iconInPage(targetDomain, refreshPath, refresh=False)
+
           cherrypy.log('No link tag found in %s' % targetPath, severity=DEBUG)
+
       else:
-        cherrypy.log('Non-success response(%d) for %s' % (rootDomainPageResult.getcode(), targetPath), 
-                     severity=INFO)
+        cherrypy.log('Non-success response(%d) for %s' % (rootDomainPageResult.getcode(), targetPath), severity=INFO)
+
     except:
       cherrypy.log('Error extracting favicon from page for : %s\n' % targetPath, severity=WARNING, traceback=True)
 
