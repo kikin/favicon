@@ -79,7 +79,7 @@ class PrintFavicon(BaseHandler):
         self.cacheIcon(targetDomain, rootIcon, rootIconPath)
         return rootIcon
     except:
-      cherrypy.log('Error fetching favicon at root for domain : %s' % targetDomain, severity=WARNING, traceback=True)
+      cherrypy.log('Error fetching favicon at root for domain : %s\n' % targetDomain, severity=WARNING, traceback=True)
 
   # Icon specified in page?
   def iconInPage(self, targetDomain, targetPath):
@@ -105,7 +105,7 @@ class PrintFavicon(BaseHandler):
         cherrypy.log('Non-success response(%d) for %s' % (rootDomainPageResult.getcode(), targetPath), 
                      severity=INFO)
     except:
-      cherrypy.log('Error extracting favicon from page for: %s' % targetPath, severity=WARNING, traceback=True)
+      cherrypy.log('Error extracting favicon from page for: %s\n' % targetPath, severity=WARNING, traceback=True)
 
   def cacheIcon(self, domain, icon, loc):
     self.mc.set_multi({'icon-%s' % domain : icon, 'icon_loc-%s' % domain : str(loc)}, time=MC_CACHE_TIME)
