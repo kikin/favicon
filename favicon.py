@@ -38,9 +38,9 @@ class PrintFavicon(BaseHandler):
     
     self.default_icon = self.urlopener.open(DEFAULT_FAVICON_LOC).read()
     
-    self.env = Environment(loader=FileSystemLoader('/opt/favicon_env/src/templates'))
+    self.env = Environment(loader=FileSystemLoader(os.path.join(cherrypy.config['favicon.root'], 'templates')))
     
-    self.mc = Client(['mea.us.kikin.com:11211'], debug=0)
+    self.mc = Client(['%(memcache.host)s:%(memcache.port)d' % cherrypy.config], debug=0)
 
     # Initialize counters
     for counter in ['requests', 'hits', 'defaults']:
@@ -54,7 +54,7 @@ class PrintFavicon(BaseHandler):
 
     iconContentType = iconResponse.info().gettype()
     if iconContentType in ICON_MIMETYPE_BLACKLIST:
-      cherrypy.log('Url:%s content-Type %s is blacklisted' % (iconContentType, iconResponse.geturl()),
+      cherrypy.log('Url:%s favicon content-Type:%s is blacklisted' % (iconResponse.geturl(), iconContentType),
                    severity=INFO)
       return None
 
@@ -62,8 +62,9 @@ class PrintFavicon(BaseHandler):
     iconLength = len(icon)
 
     if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
-      cherrypy.log('Url:%s content length=%d out of bounds' % (iconLength, iconResponse.geturl()),
+      cherrypy.log('Url:%s content length:%d out of bounds' % (iconResponse.geturl(), iconLength),
                    severity=INFO)
+      return None
   
     return icon
 
@@ -136,10 +137,17 @@ class PrintFavicon(BaseHandler):
   def parse(self, url):
     # Get page path
     targetPath = self.urldecode(url)
+    if not targetPath.startswith('http'):
+      targetPath = 'http://%s' % targetPath
+    cherrypy.log('Decoded URL : %s' % targetPath, severity=DEBUG)
 
     # Split path to get domain
     targetURL = urlparse(targetPath)
-    targetDomain =  '%s://%s' % (targetURL.scheme, targetURL.netloc)
+    if not targetURL or not targetURL.scheme or not targetURL.netloc:
+      raise cherrypy.HTTPError(400, 'Malformed URL:%s' % url)
+
+    targetDomain = '%s://%s' % (targetURL.scheme, targetURL.netloc)
+    cherrypy.log('URL : %s, domain : %s' % (targetPath, targetDomain), severity=DEBUG)
 
     return (targetPath, targetDomain)
 
@@ -152,7 +160,7 @@ class PrintFavicon(BaseHandler):
 
   @cherrypy.expose
   def test(self):
-    topSites = open('/opt/favicon_env/src/topsites.txt', 'r').read().split()
+    topSites = open(os.path.join(cherrypy.config['favicon.root'], 'topsites.txt'), 'r').read().split()
     template = self.env.get_template('test.html')
     return template.render(topSites=topSites)
 
@@ -161,9 +169,9 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Incoming cache invalidation request : %s' % url, severity=DEBUG)
 
     targetPath, targetDomain = self.parse(url)
-    cherrypy.log('Clearing cache entry for %s' % targetDomain, severity=INFO)
-
     self.mc.delete_multi(['icon-%s' % targetDomain, 'icon_loc-%s' % targetDomain])
+
+    cherrypy.log('Evicted cache entry for %s' % targetDomain, severity=INFO)
 
   @cherrypy.expose
   def favicon(self, url, skipCache=False):
@@ -207,3 +215,4 @@ if __name__ == '__main__':
 
   conf = os.path.join(os.path.dirname(__file__), 'dev.conf')
   cherrypy.quickstart(PrintFavicon(), config=conf)
+
