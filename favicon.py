@@ -174,7 +174,7 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Evicted cache entry for %s' % targetDomain, severity=INFO)
 
   @cherrypy.expose
-  def favicon(self, url, skipCache=False):
+  def s(self, url, skipCache=False):
     cherrypy.log('Incoming request : %s (skipCache=%s)' % (url, skipCache), severity=DEBUG)
 
     self.mc.incr('counter-requests')
