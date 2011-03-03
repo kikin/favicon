@@ -48,19 +48,22 @@ class PrintFavicon(BaseHandler):
 
   def validateIconResponse(self, iconResponse):
     if iconResponse.getcode() != 200:
-      cherrypy.log('%d: Not a valid success code' % iconResponse.getcode(), severity=INFO)
+      cherrypy.log('Non-success response(%s) fetching %s' % (iconResponse.getcode(), iconResponse.geturl()),
+                   severity=INFO)
       return None
 
     iconContentType = iconResponse.info().gettype()
     if iconContentType in ICON_MIMETYPE_BLACKLIST:
-      cherrypy.log('Content-Type %s is blacklisted' % iconContentType, severity=INFO)
+      cherrypy.log('Url:%s content-Type %s is blacklisted' % (iconContentType, iconResponse.geturl()),
+                   severity=INFO)
       return None
 
     icon = iconResponse.read()
     iconLength = len(icon)
 
     if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
-      cherrypy.log('Length=%d exceeds allowed range' % iconLength, severity=INFO)
+      cherrypy.log('Url:%s content length=%d out of bounds' % (iconLength, iconResponse.geturl()),
+                   severity=INFO)
   
     return icon
 
@@ -98,7 +101,8 @@ class PrintFavicon(BaseHandler):
         else:
           cherrypy.log('No link tag found in %s' % targetPath, severity=DEBUG)
       else:
-        cherrypy.log('Recieved non-success response code for %s' % targetPath, severity=INFO)
+        cherrypy.log('Non-success response(%d) for %s' % (rootDomainPageResult.getcode(), targetPath), 
+                     severity=INFO)
     except:
       cherrypy.log('Error extracting favicon from page for: %s' % targetPath, severity=WARNING, traceback=True)
 
@@ -170,8 +174,8 @@ class PrintFavicon(BaseHandler):
     targetPath, targetDomain = self.parse(url)
 
     icon = (not skipCache and self.iconInCache(targetDomain)) or \
-           self.iconAtRoot(targetDomain) or \
-           self.iconInPage(targetDomain, targetPath)
+           self.iconInPage(targetDomain, targetPath) or \
+           self.iconAtRoot(targetDomain)
 
     if not icon:
       icon = self.default_icon
