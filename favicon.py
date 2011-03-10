@@ -75,7 +75,8 @@ class PrintFavicon(BaseHandler):
                                   'rv:1.9.2.13) Gecko/20101203 Firefox/3.6.13'})
 
     opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
-    return opener.open(Request(url, headers=headers), timeout=CONNECTION_TIMEOUT)
+    return opener.open(Request(url, headers=headers),
+                       timeout=min(CONNECTION_TIMEOUT, TIMEOUT - time_spent))
 
   def validateIconResponse(self, iconResponse):
     if iconResponse.getcode() != 200:
