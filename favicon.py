@@ -131,7 +131,7 @@ class PrintFavicon(BaseHandler):
     except:
       cherrypy.log('Error fetching favicon at domain root:%s, err:%s, msg:%s' % \
                    (targetDomain, sys.exc_info()[0], sys.exc_info()[1]),
-                   severity=WARNING)
+                   severity=DEBUG)
 
   # Icon specified in page?
   def iconInPage(self, targetDomain, targetPath, start, refresh=True):
