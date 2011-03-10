@@ -1,5 +1,5 @@
 import cherrypy
-import os.path
+import os, os.path
 import json
 import sys
 
@@ -11,6 +11,7 @@ from BeautifulSoup import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from memcache import Client
 from logging import DEBUG, INFO, WARNING, ERROR
+from time import time
 
 from globals import *
 
@@ -116,7 +117,7 @@ class PrintFavicon(BaseHandler):
 
     except:
       cherrypy.log('Error fetching favicon at root for domain:%s, err:%s, msg:%s' % \
-                   (targetDomain, sys.exc_info[0], sys.exc_info[1]),
+                   (targetDomain, sys.exc_info()[0], sys.exc_info()[1]),
                    severity=WARNING)
 
   # Icon specified in page?
@@ -187,7 +188,7 @@ class PrintFavicon(BaseHandler):
 
     except:
       cherrypy.log('Error extracting favicon from page:%s, err:%s, msg:%s' % \
-                   (targetPath, sys.exc_info[0], sys.exc_info[1]),
+                   (targetPath, sys.exc_info()[0], sys.exc_info()[1]),
                    severity=WARNING)
 
   def cacheIconLoc(self, domain, loc):
@@ -276,13 +277,15 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Incoming cache invalidation request:%s' % url, 
                  severity=DEBUG)
 
-    targetPath, targetDomain = self.parse(url)
+    targetPath, targetDomain = self.parse(str(url))
     self.mc.delete('icon_loc-%s' % targetDomain)
 
     cherrypy.log('Evicted cache entry for %s' % targetDomain, severity=INFO)
 
   @cherrypy.expose
   def s(self, url, skipCache='false'):
+    start = time()
+
     if skipCache.lower() == 'true':
       skipCache = True
     else:
@@ -293,7 +296,7 @@ class PrintFavicon(BaseHandler):
 
     self.mc.incr('counter-requests')
 
-    targetPath, targetDomain = self.parse(url)
+    targetPath, targetDomain = self.parse(str(url))
 
     icon = (not skipCache and self.iconInCache(targetDomain)) or \
            self.iconInPage(targetDomain, targetPath) or \
@@ -307,9 +310,18 @@ class PrintFavicon(BaseHandler):
       self.mc.incr('counter-defaults')
       icon = self.default_icon
 
+    cherrypy.log('Time taken to process domain:%s %f' % \
+                 (targetDomain, time() - start),
+                 severity=INFO)
+
     return self.writeIcon(icon)
 
 
 if __name__ == '__main__':
-  cherrypy.quickstart(PrintFavicon(), config=conf)
+  config = os.path.join(os.getcwd(), 'dev.conf')
+
+  cherrypy.config.update(config)
+  cherrypy.config.update({'favicon.root': os.getcwd()})
+
+  cherrypy.quickstart(PrintFavicon(), config=config)
 
