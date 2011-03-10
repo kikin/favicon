@@ -12,7 +12,7 @@ ROOT='/opt/favicon_env'
 sys.path.append(os.path.join(ROOT, 'src'))
 import favicon
 
-from logging import handlers, DEBUG
+from logging import handlers, INFO
 
 # Remove the default FileHandlers if present.
 cherrypy.log.error_file = ''
@@ -23,7 +23,7 @@ err_fname = getattr(cherrypy.log,
                     os.path.join(ROOT, 'logs/errorLog'))
 
 err_handler = handlers.TimedRotatingFileHandler(err_fname, 'midnight', 1, 7)
-err_handler.setLevel(DEBUG)
+err_handler.setLevel(INFO)
 err_handler.setFormatter(cherrypy._cplogging.logfmt)
 
 cherrypy.log.error_log.addHandler(err_handler)
