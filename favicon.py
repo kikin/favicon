@@ -23,6 +23,13 @@ class Icon(object):
     self.location = location
     self.type = type
 
+
+class TimeoutError(Exception):
+
+  def __str__(self):
+    return repr(TimeoutError)
+
+
 class BaseHandler(object):
 
   def __init__(self):
@@ -41,7 +48,7 @@ class PrintFavicon(BaseHandler):
   def __init__(self):
     super(PrintFavicon, self).__init__()
 
-    default_icon_data = self.open(DEFAULT_FAVICON_LOC).read()
+    default_icon_data = self.open(DEFAULT_FAVICON_LOC, time()).read()
     self.default_icon = Icon(data=default_icon_data,
                              location=DEFAULT_FAVICON_LOC,
                              type='image/png')
@@ -57,11 +64,16 @@ class PrintFavicon(BaseHandler):
     for counter in ['requests', 'hits', 'defaults']:
       self.mc.add('counter-%s' % counter, '0')
 
-  def open(self, url, headers=None):
+  def open(self, url, start, headers=None):
+    time_spent = int(time() - start)
+    if time_spent >= TIMEOUT: 
+      raise TimeoutError(time_spent)
+
     if not headers:
       headers = dict()
     headers.update({'User-Agent': 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; ' +
                                   'rv:1.9.2.13) Gecko/20101203 Firefox/3.6.13'})
+
     opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
     return opener.open(Request(url, headers=headers), timeout=CONNECTION_TIMEOUT)
 
@@ -96,7 +108,7 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=iconContentType)
 
   # Icon at [domain]/favicon.ico?
-  def iconAtRoot(self, targetDomain):
+  def iconAtRoot(self, targetDomain, start):
     cherrypy.log('Attempting to locate favicon for domain:%s at root' % \
                  targetDomain, 
                  severity=DEBUG)
@@ -104,7 +116,7 @@ class PrintFavicon(BaseHandler):
     rootIconPath = targetDomain + '/favicon.ico'
 
     try:
-      rootDomainFaviconResult = self.open(rootIconPath)
+      rootDomainFaviconResult = self.open(rootIconPath, start)
       rootIcon = self.validateIconResponse(rootDomainFaviconResult)
 
       if rootIcon:
@@ -116,18 +128,18 @@ class PrintFavicon(BaseHandler):
         return rootIcon
 
     except:
-      cherrypy.log('Error fetching favicon at root for domain:%s, err:%s, msg:%s' % \
+      cherrypy.log('Error fetching favicon at domain root:%s, err:%s, msg:%s' % \
                    (targetDomain, sys.exc_info()[0], sys.exc_info()[1]),
                    severity=WARNING)
 
   # Icon specified in page?
-  def iconInPage(self, targetDomain, targetPath, refresh=True):
+  def iconInPage(self, targetDomain, targetPath, start, refresh=True):
     cherrypy.log('Attempting to locate embedded favicon link in page:%s' % \
                  targetPath,
                  severity=DEBUG)
 
     try:
-      rootDomainPageResult = self.open(targetPath)
+      rootDomainPageResult = self.open(targetPath, start)
 
       if rootDomainPageResult.getcode() == 200:
         pageSoup = BeautifulSoup(rootDomainPageResult.read())
@@ -149,7 +161,9 @@ class PrintFavicon(BaseHandler):
             if cookies:
               headers = {'Cookie': ';'.join(cookies)}
 
-            pagePathFaviconResult = self.open(pageIconPath, headers=headers)
+            pagePathFaviconResult = self.open(pageIconPath,
+                                              start,
+                                              headers=headers)
 
             pageIcon = self.validateIconResponse(pagePathFaviconResult)
             if pageIcon:
@@ -177,7 +191,10 @@ class PrintFavicon(BaseHandler):
                                (refreshPath, targetDomain),
                                severity=DEBUG)
 
-                  return self.iconInPage(targetDomain, refreshPath, refresh=False)
+                  return self.iconInPage(targetDomain,
+                                         refreshPath,
+                                         start,
+                                         refresh=False)
 
           cherrypy.log('No link tag found:%s' % targetPath, severity=DEBUG)
 
@@ -201,7 +218,7 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Could not cache icon location for domain:%s' % domain,
                    severity=ERROR)
 
-  def iconInCache(self, targetDomain):
+  def iconInCache(self, targetDomain, start):
     icon_loc = self.mc.get('icon_loc-%s' % targetDomain)
     if icon_loc:
       cherrypy.log('Cache hit:%s, location:%s' % (targetDomain, icon_loc),
@@ -214,7 +231,7 @@ class PrintFavicon(BaseHandler):
         return self.default_icon
 
       else:
-        iconResult = self.open(icon_loc)
+        iconResult = self.open(icon_loc, start)
         icon = self.validateIconResponse(iconResult)
 
         if icon:
@@ -298,9 +315,9 @@ class PrintFavicon(BaseHandler):
 
     targetPath, targetDomain = self.parse(str(url))
 
-    icon = (not skipCache and self.iconInCache(targetDomain)) or \
-           self.iconInPage(targetDomain, targetPath) or \
-           self.iconAtRoot(targetDomain)
+    icon = (not skipCache and self.iconInCache(targetDomain, start)) or \
+           self.iconInPage(targetDomain, targetPath, start) or \
+           self.iconAtRoot(targetDomain, start)
 
     if not icon:
       cherrypy.log('Falling back to default icon for:%s' % targetDomain,
