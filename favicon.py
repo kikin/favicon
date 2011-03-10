@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from BeautifulSoup import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from memcache import Client
-from logging import handlers, DEBUG, INFO, WARNING, ERROR
+from logging import DEBUG, INFO, WARNING, ERROR
 
 from globals import *
 
@@ -303,24 +303,5 @@ class PrintFavicon(BaseHandler):
 
 
 if __name__ == '__main__':
-  # Remove the default FileHandlers if present.
-  cherrypy.log.error_file = ''
-  cherrypy.log.access_file = ''
-
-  # Make a new RotatingFileHandler for the error log.
-  fname = getattr(cherrypy.log, 'rot_error_file', 'error.log')
-  handler = handlers.TimedRotatingFileHandler(fname, 'midnight', 1, 7)
-  handler.setLevel(DEBUG)
-  handler.setFormatter(cherrypy._cplogging.logfmt)
-  cherrypy.log.error_log.addHandler(handler)
-
-  # Make a new RotatingFileHandler for the access log.
-  fname = getattr(cherrypy.log, 'rot_access_file', 'access.log')
-  handler = handlers.TimedRotatingFileHandler(fname, 'midnight', 1, 7)
-  handler.setLevel(DEBUG)
-  handler.setFormatter(cherrypy._cplogging.logfmt)
-  cherrypy.log.access_log.addHandler(handler)
-
-  conf = os.path.join(os.path.dirname(__file__), 'dev.conf')
   cherrypy.quickstart(PrintFavicon(), config=conf)
 
