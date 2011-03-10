@@ -1,6 +1,7 @@
 ICON_MIMETYPE_BLACKLIST = [
   'application/xml',
   'text/html',
+  'text/plain',
 ]
 
 MIN_ICON_LENGTH = 100
