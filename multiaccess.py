@@ -6,8 +6,12 @@ import os.path
 #send multiple requests to localhost:8080/ with lines from a file
 def f(param):
     modified_param = param.replace("://",".")
-    searchquery = "curl http://localhost:8080/s/?url=%s -o results/%s.ico" % (param, modified_param)
-    print getoutput(searchquery)
+    searchquery = "curl -s http://localhost:8080/s/?url=%s&skipCache=true" % param
+    #searchquery = "curl http://localhost:8080/s/?url=%s -o results/%s.ico" % (param, modified_param)
+    f = open("results/%s.ico" % modified_param, "wb")
+    result = getoutput(searchquery)
+    f.write(result)
+    f.close()
     print("done with %s" % param)
 
 #send requests to google.com/s2/favicon
@@ -20,6 +24,7 @@ def g(param):
     print getoutput( searchquery )
     print("done with %s" % param)
 
+#send requests to getfavicon.com/?url=
 def h(param):
     modified_param = param.replace("://",".")
     pieces = urlparse.urlparse(param)
@@ -44,6 +49,6 @@ if __name__=='__main__':
         if not os.path.exists(path):
             os.mkdir(path)
 
-    p = Pool(processes=2)
-    result = p.map(h, wordlist)
+    p = Pool(processes=3)
+    result = p.map(f, wordlist)
 
