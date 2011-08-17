@@ -71,12 +71,15 @@ class PrintFavicon(BaseHandler):
 
     if not headers:
       headers = dict()
-    headers.update({'User-Agent': 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; ' +
-                                  'rv:1.9.2.13) Gecko/20101203 Firefox/3.6.13'})
+    headers.update(HEADERS)
 
-    opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
-    return opener.open(Request(url, headers=headers),
+    #opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
+    opener = build_opener(HTTPCookieProcessor())
+    result = opener.open(Request(url, headers=headers),
                        timeout=min(CONNECTION_TIMEOUT, TIMEOUT - time_spent))
+    cherrypy.log('%s =redirect=> %s' % (url, result.url), severity=DEBUG)
+
+    return result
 
   def validateIconResponse(self, iconResponse):
     if iconResponse.getcode() != 200:
@@ -86,11 +89,13 @@ class PrintFavicon(BaseHandler):
       return None
 
     iconContentType = iconResponse.info().gettype()
+
     if iconContentType in ICON_MIMETYPE_BLACKLIST:
       cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
                    (iconResponse.geturl(), iconContentType),
-                   severity=DEBUG)
-      return None
+                   severity=WARNING)
+      #disable blacklist for now
+      #return None
 
     icon = iconResponse.read()
     iconLength = len(icon)
@@ -104,7 +109,7 @@ class PrintFavicon(BaseHandler):
       # Issue warning, but accept nonetheless!
       cherrypy.log('Warning: url:%s favicon size:%d out of bounds' % \
                    (iconResponse.geturl(), iconLength),
-                   severity=DEBUG)
+                   severity=WARNING)
   
     return Icon(data=icon, type=iconContentType)
 
@@ -114,7 +119,7 @@ class PrintFavicon(BaseHandler):
                  targetDomain, 
                  severity=DEBUG)
 
-    rootIconPath = targetDomain + '/favicon.ico'
+    rootIconPath = urljoin(targetDomain, '/favicon.ico')
 
     try:
       rootDomainFaviconResult = self.open(rootIconPath, start)
@@ -186,16 +191,20 @@ class PrintFavicon(BaseHandler):
 
                 if match:
                   refreshPath = urljoin(rootDomainPageResult.geturl(), 
-                                        match.group(1))
+                                        match.group(1)).strip()
 
                   cherrypy.log('Processing refresh directive:%s for domain:%s' % \
                                (refreshPath, targetDomain),
                                severity=DEBUG)
 
-                  return self.iconInPage(targetDomain,
+                  icon = self.iconInPage(targetDomain,
                                          refreshPath,
                                          start,
-                                         refresh=False)
+                                         refresh=False) or \
+                         self.iconAtRoot(refreshPath,
+                                         start)
+                  return icon
+
 
           cherrypy.log('No link tag found:%s' % targetPath, severity=DEBUG)
 
@@ -207,13 +216,13 @@ class PrintFavicon(BaseHandler):
     except:
       cherrypy.log('Error extracting favicon from page:%s, err:%s, msg:%s' % \
                    (targetPath, sys.exc_info()[0], sys.exc_info()[1]),
-                   severity=WARNING)
+                   severity=DEBUG)
 
   def cacheIconLoc(self, domain, loc):
     cherrypy.log('Caching location:%s for domain:%s' % (loc, domain),
                  severity=INFO)
 
-    if not self.mc.set('icon_loc-%s' % domain,
+    if not self.mc.set('icon_loc-%s' % str(domain),
                        str(loc),
                        time=MC_CACHE_TIME):
       cherrypy.log('Could not cache icon location for domain:%s' % domain,
@@ -316,8 +325,25 @@ class PrintFavicon(BaseHandler):
 
     targetPath, targetDomain = self.parse(str(url))
 
+    #follow redirect for targetDomain
+    redirectedDomain = targetDomain
+    temp_opener = build_opener()
+    temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
+            timeout=CONNECTION_TIMEOUT)
+
+    if temp_result.url:
+        pieces = urlparse(temp_result.url)
+        #using netloc to guard against sites like 'passport.net', which redirects
+        #to 'account.passport.net'
+        if pieces.netloc:
+            redirectedDomain = "%s://%s" % (pieces.scheme, pieces.netloc)
+    #end redirect setup
+
+    #extra lines from previous -- 
+    #last line is for sites like blogger.com at the time of this writing
     icon = (not skipCache and self.iconInCache(targetDomain, start)) or \
-           self.iconInPage(targetDomain, targetPath, start) or \
+           self.iconInPage(redirectedDomain, targetPath, start) or \
+           self.iconAtRoot(redirectedDomain, start) or \
            self.iconAtRoot(targetDomain, start)
 
     if not icon:
@@ -340,6 +366,8 @@ if __name__ == '__main__':
 
   cherrypy.config.update(config)
   cherrypy.config.update({'favicon.root': os.getcwd()})
+  stream = cherrypy.log.error_log.handlers[0]
+  stream.setLevel(DEBUG)
 
   cherrypy.quickstart(PrintFavicon(), config=config)
 
