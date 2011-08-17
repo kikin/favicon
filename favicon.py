@@ -2,6 +2,7 @@ import cherrypy
 import os, os.path
 import json
 import sys
+import magic
 
 from re import search, compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta
 from BeautifulSoup import BeautifulSoup
 from jinja2 import Environment, FileSystemLoader
 from memcache import Client
-from logging import DEBUG, INFO, WARNING, ERROR
+from logging import DEBUG, INFO, WARNING, ERROR, Formatter
 from time import time
 
 from globals import *
@@ -88,21 +89,35 @@ class PrintFavicon(BaseHandler):
                    severity=DEBUG)
       return None
 
-    iconContentType = iconResponse.info().gettype()
-
-    if iconContentType in ICON_MIMETYPE_BLACKLIST:
-      cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
-                   (iconResponse.geturl(), iconContentType),
-                   severity=WARNING)
-      #disable blacklist for now
-      #return None
-
     icon = iconResponse.read()
     iconLength = len(icon)
 
     if iconLength == 0:
-      cherrypy.log('Url:%s null content length' % iconResponse.geturl(), 
+      cherrypy.log('Url:%s null content length' % iconResponse.geturl(),
                    severity=DEBUG)
+      return None
+
+    iconContentType = iconResponse.info().gettype()
+    cherrypy
+    iconContentTypeMagic = magic.from_buffer(icon, mime=True)
+
+    #python-magic here might not be completely reliable -- don't know if it's returning
+    #a pure python str() or some variant of ctypes.c_char_p
+    #I hope it's not the latter...
+    if iconContentTypeMagic in "image/x-ico":
+      iconContentTypeMagic = "image/x-icon"
+
+    if (iconContentType != iconContentTypeMagic):
+      cherrypy.log('Url:%s content-Type does not match actual type' % \
+                   iconResponse.geturl(), severity=WARNING)
+      cherrypy.log('content-Type sent: %s, actual content-Type: %s' % \
+                   (iconContentType, iconContentTypeMagic),
+                   severity=WARNING)
+
+    if iconContentTypeMagic in ICON_MIMETYPE_BLACKLIST:
+      cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
+                   (iconResponse.geturl(), iconContentType),
+                   severity=WARNING)
       return None
 
     if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
@@ -110,13 +125,13 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Warning: url:%s favicon size:%d out of bounds' % \
                    (iconResponse.geturl(), iconLength),
                    severity=WARNING)
-  
-    return Icon(data=icon, type=iconContentType)
+
+    return Icon(data=icon, type=iconContentTypeMagic)
 
   # Icon at [domain]/favicon.ico?
   def iconAtRoot(self, targetDomain, start):
     cherrypy.log('Attempting to locate favicon for domain:%s at root' % \
-                 targetDomain, 
+                 targetDomain,
                  severity=DEBUG)
 
     rootIconPath = urljoin(targetDomain, '/favicon.ico')
@@ -368,6 +383,9 @@ if __name__ == '__main__':
   cherrypy.config.update({'favicon.root': os.getcwd()})
   stream = cherrypy.log.error_log.handlers[0]
   stream.setLevel(DEBUG)
+  FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
+        + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
+  stream.setFormatter(FORMATTER)
 
   cherrypy.quickstart(PrintFavicon(), config=config)
 
