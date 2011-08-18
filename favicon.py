@@ -350,12 +350,6 @@ class PrintFavicon(BaseHandler):
 
     if temp_result.url:
       redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
-        #pieces = urlparse(temp_result.url)
-        ##using netloc to guard against sites like 'passport.net', which redirects
-        ##to 'account.passport.net'
-        #if pieces.netloc and pieces.scheme:
-            #redirectedDomain = "%s://%s" % (pieces.scheme, pieces.netloc)
-      print "NEWWW STUFF: %s %s" % (redirectedPath, redirectedDomain)
     #end redirect setup
 
     #extra lines from previous -- 
