@@ -2,7 +2,7 @@ import cherrypy
 import os, os.path
 import json
 import sys
-import magic
+import subprocess
 
 from re import search, compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
@@ -98,8 +98,13 @@ class PrintFavicon(BaseHandler):
       return None
 
     iconContentType = iconResponse.info().gettype()
-    cherrypy
-    iconContentTypeMagic = magic.from_buffer(icon, mime=True)
+    #hopefully the icon sent is never super duper big
+    try:
+      iconContentTypeMagic = self.useLibMagicFile(icon)
+    except Exception as e:
+      iconContentTypeMagic = iconContentType
+      cherrypy.log('Error calling file %s: %s' % (url, e), severity=ERROR)
+
 
     #python-magic here might not be completely reliable -- don't know if it's returning
     #a pure python str() or some variant of ctypes.c_char_p
@@ -127,6 +132,14 @@ class PrintFavicon(BaseHandler):
                    severity=WARNING)
 
     return Icon(data=icon, type=iconContentTypeMagic)
+
+  def useLibMagicFile(self, string):
+    process = subprocess.Popen(["file", "-", "-I"],
+              stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+    out, err = process.communicate(input=string)
+    #example out= '/dev/stdin: image/x-ico; charset=binary'
+    #out.split()[1][0:-1] = image/x-ico
+    return out.split()[1][0:-1]
 
   # Icon at [domain]/favicon.ico?
   def iconAtRoot(self, targetDomain, start):
@@ -339,7 +352,6 @@ class PrintFavicon(BaseHandler):
     self.mc.incr('counter-requests')
 
     targetPath, targetDomain = self.parse(str(url))
-    print "WHAAT IS THIS STUFF: %s %s" % (targetPath, targetDomain)
 
     #follow redirect for targetDomain -- ought to be in a separate function,
     #just like self.parse()
