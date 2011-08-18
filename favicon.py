@@ -339,25 +339,29 @@ class PrintFavicon(BaseHandler):
     self.mc.incr('counter-requests')
 
     targetPath, targetDomain = self.parse(str(url))
+    print "WHAAT IS THIS STUFF: %s %s" % (targetPath, targetDomain)
 
-    #follow redirect for targetDomain
+    #follow redirect for targetDomain -- ought to be in a separate function,
+    #just like self.parse()
     redirectedDomain = targetDomain
     temp_opener = build_opener()
     temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
             timeout=CONNECTION_TIMEOUT)
 
     if temp_result.url:
-        pieces = urlparse(temp_result.url)
-        #using netloc to guard against sites like 'passport.net', which redirects
-        #to 'account.passport.net'
-        if pieces.netloc:
-            redirectedDomain = "%s://%s" % (pieces.scheme, pieces.netloc)
+      redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
+        #pieces = urlparse(temp_result.url)
+        ##using netloc to guard against sites like 'passport.net', which redirects
+        ##to 'account.passport.net'
+        #if pieces.netloc and pieces.scheme:
+            #redirectedDomain = "%s://%s" % (pieces.scheme, pieces.netloc)
+      print "NEWWW STUFF: %s %s" % (redirectedPath, redirectedDomain)
     #end redirect setup
 
     #extra lines from previous -- 
     #last line is for sites like blogger.com at the time of this writing
-    icon = (not skipCache and self.iconInCache(targetDomain, start)) or \
-           self.iconInPage(redirectedDomain, targetPath, start) or \
+    icon = (not skipCache and self.iconInCache(redirectedDomain, start)) or \
+           self.iconInPage(redirectedDomain, redirectedPath, start) or \
            self.iconAtRoot(redirectedDomain, start) or \
            self.iconAtRoot(targetDomain, start)
 
@@ -382,10 +386,11 @@ if __name__ == '__main__':
   cherrypy.config.update(config)
   cherrypy.config.update({'favicon.root': os.getcwd()})
   stream = cherrypy.log.error_log.handlers[0]
-  stream.setLevel(DEBUG)
   FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
         + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
   stream.setFormatter(FORMATTER)
+  #cherrypy.log.error_log.setLevel(DEBUG)
+  #stream.setLevel(DEBUG)
 
   cherrypy.quickstart(PrintFavicon(), config=config)
 
