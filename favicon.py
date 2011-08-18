@@ -103,7 +103,7 @@ class PrintFavicon(BaseHandler):
       iconContentTypeMagic = self.useLibMagicFile(icon)
     except Exception as e:
       iconContentTypeMagic = iconContentType
-      cherrypy.log('Error calling file %s: %s' % (url, e), severity=ERROR)
+      cherrypy.log('Error calling file %s: %s' % (iconResponse.geturl(), e), severity=ERROR)
 
 
     #python-magic here might not be completely reliable -- don't know if it's returning
