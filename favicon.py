@@ -134,7 +134,7 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=iconContentTypeMagic)
 
   def useLibMagicFile(self, string):
-    process = subprocess.Popen(["file", "-", "-I"],
+    process = subprocess.Popen(["file", "-", "-i"],
               stdin=subprocess.PIPE,stdout=subprocess.PIPE)
     out, err = process.communicate(input=string)
     #example out= '/dev/stdin: image/x-ico; charset=binary'
@@ -250,7 +250,7 @@ class PrintFavicon(BaseHandler):
 
   def cacheIconLoc(self, domain, loc):
     cherrypy.log('Caching location:%s for domain:%s' % (loc, domain),
-                 severity=INFO)
+                 severity=WARNING)
 
     if not self.mc.set('icon_loc-%s' % str(domain),
                        str(loc),
