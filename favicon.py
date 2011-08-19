@@ -231,6 +231,8 @@ class PrintFavicon(BaseHandler):
                                          refresh=False) or \
                          self.iconAtRoot(refreshPath,
                                          start)
+                  self.cacheIconLoc(targetDomain,refreshPath)
+
                   return icon
 
 
