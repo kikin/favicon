@@ -357,8 +357,12 @@ class PrintFavicon(BaseHandler):
     #just like self.parse()
     redirectedDomain = targetDomain
     temp_opener = build_opener()
-    temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
-            timeout=CONNECTION_TIMEOUT)
+    try:
+        temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
+                timeout=CONNECTION_TIMEOUT)
+    except UrlError as e:
+        cherrypy.log('Url:%s - failed to load/redirect' % url,
+                severity=WARNING)
 
     if temp_result.url:
       redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
