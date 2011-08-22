@@ -3,6 +3,8 @@ import os, os.path
 import json
 import sys
 import subprocess
+import gzip
+import StringIO
 
 from re import search, compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
@@ -83,6 +85,7 @@ class PrintFavicon(BaseHandler):
     return result
 
   def validateIconResponse(self, iconResponse):
+    #these methods need to be cleaned up
     if iconResponse.getcode() != 200:
       cherrypy.log('Non-success response:%d fetching url:%s' % \
                    (iconResponse.getcode(), iconResponse.geturl()),
@@ -101,21 +104,25 @@ class PrintFavicon(BaseHandler):
     #hopefully the icon sent is never super duper big
     try:
       iconContentTypeMagic = self.useLibMagicFile(icon)
+      if 'gzip' in iconContentTypeMagic.lower():
+        cherrypy.log('Type of %s is gzip, unzipping...' % iconResponse.geturl(),
+                    severity=WARNING)
+        icon = self.gunzipIconFile(icon)
+        #checking mimetype again
+        iconContentTypeMagic = self.useLibMagicFile(icon)
+
     except Exception as e:
       iconContentTypeMagic = iconContentType
-      cherrypy.log('Error calling file %s: %s' % (iconResponse.geturl(), e), severity=ERROR)
+      cherrypy.log('Error calling libmagic and gzip on %s: %s' % (iconResponse.geturl(), e),
+                    severity=ERROR)
 
-
-    #python-magic here might not be completely reliable -- don't know if it's returning
-    #a pure python str() or some variant of ctypes.c_char_p
-    #I hope it's not the latter...
     if iconContentTypeMagic in "image/x-ico":
       iconContentTypeMagic = "image/x-icon"
 
     if (iconContentType != iconContentTypeMagic):
-      cherrypy.log('Url:%s content-Type does not match actual type' % \
+      cherrypy.log('Url:%s Content-Type does not match type from libmagic' % \
                    iconResponse.geturl(), severity=WARNING)
-      cherrypy.log('content-Type sent: %s, actual content-Type: %s' % \
+      cherrypy.log('Content-Type sent: %s, scanned Content-Type: %s' % \
                    (iconContentType, iconContentTypeMagic),
                    severity=WARNING)
 
@@ -134,12 +141,19 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=iconContentTypeMagic)
 
   def useLibMagicFile(self, string):
-    process = subprocess.Popen(["file", "-", "-i"],
+    process = subprocess.Popen(FILECOMMAND_SYSV,
               stdin=subprocess.PIPE,stdout=subprocess.PIPE)
     out, err = process.communicate(input=string)
     #example out= '/dev/stdin: image/x-ico; charset=binary'
     #out.split()[1][0:-1] = image/x-ico
     return out.split()[1][0:-1]
+
+  def gunzipIconFile(self, stream):
+    f = StringIO.StringIO(stream)
+    output = gzip.GzipFile(fileobj=f).read()
+    f.close()
+    return output
+
 
   # Icon at [domain]/favicon.ico?
   def iconAtRoot(self, targetDomain, start):
