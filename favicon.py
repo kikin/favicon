@@ -8,6 +8,7 @@ import re
 #import signal
 import subprocess
 import sys
+import urllib2
 import urlparse
 
 import globals
@@ -17,7 +18,6 @@ from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
 from logging import DEBUG, INFO, WARN, ERROR, Formatter
 from time import time
-from urllib2 import HTTPCookieProcessor, Request, build_opener
 
 # helper methods
 
@@ -96,8 +96,8 @@ class PrintFavicon(BaseHandler):
       headers = dict()
     headers.update(globals.HEADERS)
 
-    opener = build_opener(HTTPCookieProcessor())
-    result = opener.open(Request(url, headers=headers),
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
+    result = opener.open(urllib2.Request(url, headers=headers),
                        timeout=min(globals.CONNECTION_TIMEOUT, globals.TIMEOUT - time_spent))
     cherrypy.log('%s =redirect=> %s' % (url, result.url), severity=DEBUG)
 
