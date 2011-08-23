@@ -24,33 +24,67 @@ def timeout_handler(signum, frame):
   raise TimeoutError()
 
 def libmagic(string):
-  '''example out= '/dev/stdin: image/x-ico; charset=binary'
-  mime = image/x-ico'''
+  '''Example out= '/dev/stdin: image/x-ico; charset=binary'
+  mime = image/x-ico(n)
+  Browsers want '''
   process = subprocess.Popen(globals.FILECOMMAND_BSD,
             stdin=subprocess.PIPE,stdout=subprocess.PIPE)
   out, err = process.communicate(input=string)
   file, mime, charset = filter(lambda string: string, re.split("[\s:;]",out))
+
+  if mime in "image/x-ico":
+    mime = "image/x-icon"
   return mime
 
 def gunzip(stream):
-  '''don't use for even moderately big files'''
+  '''Don't use for even moderately big files'''
   f = StringIO.StringIO(stream)
   output = gzip.GzipFile(fileobj=f).read()
   f.close()
   return output
 
-def figure_out(icon,contentType=None):
-  '''figure out icon.type and whether to gunzip
+def figure_out(iconResponse):
+  '''Figures out mimetype and whether to gunzip.
+  Thrown through a bunch of validation tests.
   returns Icon or None if error'''
+  #too many try/catch blocks here?
+  url = iconResponse.url
+  code = iconResponse.getCode()
+
+  if code != 200:
+    cherrypy.log('URL:%s Unsuccessful response: %s' % (url, code), severity=WARN)
+
+  icon = iconResponse.read()
   length = len(icon)
 
   if not length:
+    cherrypy.log('URL:%s Content-Length=0' % url, severity=ERROR)
     return None
-  if not contentType:
+
+  try:
     contentType = libmagic(icon)
+  except OSError as e:
+    cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
+    return None
+
+  if 'gzip' in contentType:
+    cherrypy.log('URL:%s Type is gzip, unpacking...' % url, severity=WARN)
+    icon = gunzip(icon)
+    try:
+      contentType = libmagic(icon)
+    except OSError as e:
+      cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
 
 
-  return None
+  if contentType in globals.ICON_MIMETYPE_BLACKLIST:
+    cherrypy.log('URL:%s Content-Type:%s blacklisted', severity=ERROR)
+    return None
+
+  if length < globals.MIN_ICON_LENGTH or length > globals.MAX_ICON_LENGTH:
+    cherrypy.log('URL:%s Warning: favicon size:%d out of bounds' % \
+        (url, length), severity=WARN)
+
+  return Icon(data=icon, type=contentType)
 
 # classes
 
