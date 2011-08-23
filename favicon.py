@@ -112,7 +112,7 @@ class PrintFavicon(BaseHandler):
     result = opener.open(urllib2.Request(domain, headers=globals.HEADERS))
 
     if result.url:
-      cherrypy.log('URL:%s, redirected to: %s' % (url, result.url), severity=WARNING)
+      cherrypy.log('URL:%s, redirected to: %s' % (url, result.url), severity=WARN)
       return self.parse(str(result.url))
     return (None, None)
 
