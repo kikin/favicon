@@ -43,49 +43,6 @@ def gunzip(stream):
   f.close()
   return output
 
-def figure_out(iconResponse):
-  '''Figures out mimetype and whether to gunzip.
-  Thrown through a bunch of validation tests.
-  returns Icon or None if error'''
-  #too many try/catch blocks here?
-  url = iconResponse.url
-  code = iconResponse.getCode()
-
-  if code != 200:
-    cherrypy.log('URL:%s Unsuccessful response: %s' % (url, code), severity=WARN)
-
-  icon = iconResponse.read()
-  length = len(icon)
-
-  if not length:
-    cherrypy.log('URL:%s Content-Length=0' % url, severity=ERROR)
-    return None
-
-  try:
-    contentType = libmagic(icon)
-  except OSError as e:
-    cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
-    return None
-
-  if 'gzip' in contentType:
-    cherrypy.log('URL:%s Type is gzip, unpacking...' % url, severity=WARN)
-    icon = gunzip(icon)
-    try:
-      contentType = libmagic(icon)
-    except OSError as e:
-      cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
-
-
-  if contentType in globals.ICON_MIMETYPE_BLACKLIST:
-    cherrypy.log('URL:%s Content-Type:%s blacklisted', severity=ERROR)
-    return None
-
-  if length < globals.MIN_ICON_LENGTH or length > globals.MAX_ICON_LENGTH:
-    cherrypy.log('URL:%s Warning: favicon size:%d out of bounds' % \
-        (url, length), severity=WARN)
-
-  return Icon(data=icon, type=contentType)
-
 # classes
 
 class Icon(object):
@@ -149,60 +106,48 @@ class PrintFavicon(BaseHandler):
     return result
 
   def validateIconResponse(self, iconResponse):
-    #these methods need to be cleaned up
-    if iconResponse.getcode() != 200:
-      cherrypy.log('Non-success response:%d fetching url:%s' % \
-                   (iconResponse.getcode(), iconResponse.geturl()),
-                   severity=DEBUG)
-      return None
+    '''Figures out mimetype and whether to gunzip.
+    Thrown through a bunch of validation tests.
+    No real reason to be an instance method.
+    returns Icon or None if error'''
+    #too many try/catch blocks here?
+    url = iconResponse.url
+    code = iconResponse.getcode()
+
+    if code != 200:
+      cherrypy.log('URL:%s Unsuccessful response: %s' % (url, code), severity=WARN)
 
     icon = iconResponse.read()
-    iconLength = len(icon)
+    length = len(icon)
 
-    if iconLength == 0:
-      cherrypy.log('Url:%s null content length' % iconResponse.geturl(),
-                   severity=DEBUG)
+    if not length:
+      cherrypy.log('URL:%s Content-Length=0' % url, severity=ERROR)
       return None
 
-    iconContentType = iconResponse.info().gettype()
-    #hopefully the icon sent is never super duper big
     try:
-      iconContentTypeMagic = libmagic(icon)
-      if 'gzip' in iconContentTypeMagic.lower():
-        cherrypy.log('Type of %s is gzip, unzipping...' % iconResponse.geturl(),
-                    severity=WARN)
-        icon = gunzip(icon)
-        #checking mimetype again
-        iconContentTypeMagic = libmagic(icon)
-
-    except Exception as e:
-      iconContentTypeMagic = iconContentType
-      cherrypy.log('Error calling libmagic and gzip on %s: %s' % (iconResponse.geturl(), e),
-                    severity=ERROR)
-
-    if iconContentTypeMagic in "image/x-ico":
-      iconContentTypeMagic = "image/x-icon"
-
-    if (iconContentType != iconContentTypeMagic):
-      cherrypy.log('Url:%s Content-Type does not match type from libmagic' % \
-                   iconResponse.geturl(), severity=WARN)
-      cherrypy.log('Content-Type sent: %s, scanned Content-Type: %s' % \
-                   (iconContentType, iconContentTypeMagic),
-                   severity=WARN)
-
-    if iconContentTypeMagic in globals.ICON_MIMETYPE_BLACKLIST:
-      cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
-                   (iconResponse.geturl(), iconContentType),
-                   severity=WARN)
+      contentType = libmagic(icon)
+    except OSError as e:
+      cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
       return None
 
-    if iconLength < globals.MIN_ICON_LENGTH or iconLength > globals.MAX_ICON_LENGTH:
-      # Issue warning, but accept nonetheless!
-      cherrypy.log('Warning: url:%s favicon size:%d out of bounds' % \
-                   (iconResponse.geturl(), iconLength),
-                   severity=WARN)
+    if 'gzip' in contentType:
+      cherrypy.log('URL:%s Type is gzip, unpacking...' % url, severity=WARN)
+      icon = gunzip(icon)
+      try:
+        contentType = libmagic(icon)
+      except OSError as e:
+        cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
 
-    return Icon(data=icon, type=iconContentTypeMagic)
+
+    if contentType in globals.ICON_MIMETYPE_BLACKLIST:
+      cherrypy.log('URL:%s Content-Type:%s blacklisted', severity=ERROR)
+      return None
+
+    if length < globals.MIN_ICON_LENGTH or length > globals.MAX_ICON_LENGTH:
+      cherrypy.log('URL:%s Warning: favicon size:%d out of bounds' % \
+          (url, length), severity=WARN)
+
+    return Icon(data=icon, type=contentType)
 
   def iconAtRoot(self, domain, start):
     '''check for icon at [domain]/favicon.ico?'''
@@ -486,4 +431,4 @@ if __name__ == '__main__':
 
   cherrypy.quickstart(PrintFavicon(), config=config)
 
-# vim: sts=2:sw=2:ts=2
+# vim: sts=2:sw=2:ts=2:tw=85
