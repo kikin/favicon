@@ -251,7 +251,7 @@ class PrintFavicon(BaseHandler):
   def iconInCache(self, targetDomain, start):
     icon_loc = self.mc.get('icon_loc-%s' % targetDomain)
     if icon_loc:
-      cherrypy.log('Cache hit:%s, location:%s' % (targetDomain, icon_loc),
+      cherrypy.log('URL:%s cache hit, location=%s' % (targetDomain, icon_loc),
                    severity=DEBUG)
 
       if icon_loc == globals.DEFAULT_FAVICON_LOC:
@@ -274,7 +274,7 @@ class PrintFavicon(BaseHandler):
           icon.location = icon_loc
           return icon
         else:
-          cherrypy.log('Cached location for domain:%s no longer valid' % \
+          cherrypy.log('URL:%s cached location no longer valid' % \
                        targetDomain,
                        severity=INFO)
 
@@ -302,8 +302,7 @@ class PrintFavicon(BaseHandler):
     else:
       parent = None
 
-    cherrypy.log('domain:%s, parent:%s' % (urlPieces.netloc, parent),
-                  severity=INFO)
+    cherrypy.log('URL:%s, parent:%s' % (urlPieces.netloc, parent), severity=DEBUG)
     return parent
 
   def parse(self, url):
@@ -311,7 +310,7 @@ class PrintFavicon(BaseHandler):
     targetPath = self.urldecode(url)
     if not targetPath.startswith('http'):
       targetPath = 'http://%s' % targetPath
-    cherrypy.log('Decoded URL:%s' % targetPath, severity=DEBUG)
+    cherrypy.log('URL:%s decoded' % targetPath, severity=DEBUG)
 
     # Split path to get domain
     targetURL = urlparse.urlparse(targetPath)
