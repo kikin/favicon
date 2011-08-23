@@ -26,11 +26,12 @@ def timeout_handler(signum, frame):
 
 def libmagic(string):
   '''example out= '/dev/stdin: image/x-ico; charset=binary'
-  out.split()[1][0:-1] = image/x-ico'''
+  mime = image/x-ico'''
   process = subprocess.Popen(globals.FILECOMMAND_BSD,
             stdin=subprocess.PIPE,stdout=subprocess.PIPE)
   out, err = process.communicate(input=string)
-  return out.split()[1][0:-1]
+  file, mime, charset = filter(lambda string: string, re.split("[\s:;]",out))
+  return mime
 
 def gunzip(stream):
   '''don't use for even moderately big files'''
