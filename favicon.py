@@ -18,11 +18,6 @@ from jinja2 import Environment, FileSystemLoader
 from logging import DEBUG, INFO, WARN, ERROR, Formatter, handlers
 from time import time
 
-# setup CherryPy
-#app = cherrypy.tree.mount(PrintFavicon(),config=config)
-app = cherrypy
-
-
 # helper methods
 
 def timeout_handler(signum, frame):
@@ -435,7 +430,11 @@ if __name__ == '__main__':
   cherrypy.config.update(config)
   cherrypy.config.update({'favicon.root': os.getcwd()})
 
-  FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
+  # setup CherryPy
+  #app = cherrypy.tree.mount(PrintFavicon(),config=config)
+  app = cherrypy
+
+  FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-7s"
         + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
   app.log.error_file = ''
   app.log.access_file = ''
