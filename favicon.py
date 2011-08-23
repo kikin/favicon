@@ -2,20 +2,22 @@ import StringIO
 import cherrypy
 import gzip
 import json
+import memcache
 import os, os.path
+import re
 import signal
 import subprocess
 import sys
+import urlparse
 
-from re import search, compile, MULTILINE, IGNORECASE
-from urlparse import urlparse, urljoin
-from urllib2 import HTTPRedirectHandler, HTTPCookieProcessor, Request, build_opener
-from datetime import datetime, timedelta
+import globals
+
 from BeautifulSoup import BeautifulSoup
+from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
-from memcache import Client
-from logging import DEBUG, INFO, WARNING, ERROR, Formatter
+from logging import DEBUG, INFO, WARN, ERROR, Formatter
 from time import time
+from urllib2 import HTTPCookieProcessor, Request, build_opener
 
 from globals import *
 
@@ -39,7 +41,7 @@ class BaseHandler(object):
 
   def __init__(self):
     super(BaseHandler, self).__init__()
-    self.re = compile('%([0-9a-hA-H][0-9a-hA-H])', MULTILINE)
+    self.re = re.compile('%([0-9a-hA-H][0-9a-hA-H])', re.MULTILINE)
 
   def htc(self, m):
     return chr(int(m.group(1), 16))
@@ -62,8 +64,8 @@ class PrintFavicon(BaseHandler):
                                     os.path.join(cherrypy.config['favicon.root'],
                                                  'templates')))
 
-    self.mc = Client(['%(memcache.host)s:%(memcache.port)d' % cherrypy.config],
-                     debug=2)
+    self.mc = memcache.Client(['%(memcache.host)s:%(memcache.port)d' %
+      cherrypy.config], debug=2)
 
     # Initialize counters
     for counter in ['requests', 'hits', 'defaults']:
@@ -108,7 +110,7 @@ class PrintFavicon(BaseHandler):
       iconContentTypeMagic = self.useLibMagicFile(icon)
       if 'gzip' in iconContentTypeMagic.lower():
         cherrypy.log('Type of %s is gzip, unzipping...' % iconResponse.geturl(),
-                    severity=WARNING)
+                    severity=WARN)
         icon = self.gunzipIconFile(icon)
         #checking mimetype again
         iconContentTypeMagic = self.useLibMagicFile(icon)
@@ -123,22 +125,22 @@ class PrintFavicon(BaseHandler):
 
     if (iconContentType != iconContentTypeMagic):
       cherrypy.log('Url:%s Content-Type does not match type from libmagic' % \
-                   iconResponse.geturl(), severity=WARNING)
+                   iconResponse.geturl(), severity=WARN)
       cherrypy.log('Content-Type sent: %s, scanned Content-Type: %s' % \
                    (iconContentType, iconContentTypeMagic),
-                   severity=WARNING)
+                   severity=WARN)
 
     if iconContentTypeMagic in ICON_MIMETYPE_BLACKLIST:
       cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
                    (iconResponse.geturl(), iconContentType),
-                   severity=WARNING)
+                   severity=WARN)
       return None
 
     if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
       # Issue warning, but accept nonetheless!
       cherrypy.log('Warning: url:%s favicon size:%d out of bounds' % \
                    (iconResponse.geturl(), iconLength),
-                   severity=WARNING)
+                   severity=WARN)
 
     return Icon(data=icon, type=iconContentTypeMagic)
 
@@ -161,9 +163,9 @@ class PrintFavicon(BaseHandler):
   def iconAtRoot(self, targetDomain, start):
     cherrypy.log('Attempting to locate favicon for domain:%s at root' % \
                  targetDomain,
-                 severity=WARNING)
+                 severity=WARN)
 
-    rootIconPath = urljoin(targetDomain, '/favicon.ico')
+    rootIconPath = urlparse.urljoin(targetDomain, '/favicon.ico')
 
     try:
       rootDomainFaviconResult = self.open(rootIconPath, start)
@@ -194,14 +196,14 @@ class PrintFavicon(BaseHandler):
       if rootDomainPageResult.getcode() == 200:
         pageSoup = BeautifulSoup(rootDomainPageResult.read())
         pageSoupIcon = pageSoup.find('link',
-                                     rel=compile('^(shortcut|icon|shortcut icon)$',
-                                     IGNORECASE))
+                                     rel=re.compile('^(shortcut|icon|shortcut icon)$',
+                                     re.IGNORECASE))
 
         if pageSoupIcon:
           pageIconHref = pageSoupIcon.get('href')
 
           if pageIconHref:
-            pageIconPath = urljoin(targetPath, pageIconHref)
+            pageIconPath = urlparse.urljoin(targetPath, pageIconHref)
             cherrypy.log('Found embedded favicon link:%s for domain:%s' % \
                          (pageIconPath, targetDomain),
                          severity=DEBUG)
@@ -229,12 +231,12 @@ class PrintFavicon(BaseHandler):
           if refresh:
             for meta in pageSoup.findAll('meta'):
               if meta.get('http-equiv', '').lower() == 'refresh':
-                match = search('url=([^;]+)',
+                match = re.search('url=([^;]+)',
                                meta.get('content', ''),
-                               flags=IGNORECASE)
+                               flags=re.IGNORECASE)
 
                 if match:
-                  refreshPath = urljoin(rootDomainPageResult.geturl(),
+                  refreshPath = urlparse.urljoin(rootDomainPageResult.geturl(),
                                         match.group(1)).strip()
 
                   cherrypy.log('Processing refresh directive:%s for domain:%s' % \
@@ -317,7 +319,7 @@ class PrintFavicon(BaseHandler):
                           (datetime.now() + timedelta(days=30)).strftime(fmt)
 
   def parentLoc(self, url):
-    urlPieces = urlparse(self.urldecode(url))
+    urlPieces = urlparse.urlparse(self.urldecode(url))
     if not urlPieces or not urlPieces.scheme or not urlPieces.netloc:
       raise cherrypy.HTTPError(400, 'Malformed URL:%s' % url)
 
@@ -339,7 +341,7 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Decoded URL:%s' % targetPath, severity=DEBUG)
 
     # Split path to get domain
-    targetURL = urlparse(targetPath)
+    targetURL = urlparse.urlparse(targetPath)
     if not targetURL or not targetURL.scheme or not targetURL.netloc:
       raise cherrypy.HTTPError(400, 'Malformed URL:%s' % url)
 
@@ -404,7 +406,7 @@ class PrintFavicon(BaseHandler):
           parentDomain = targetDomain
     except Exception as e:
       cherrypy.log('Url:%s - failed to load/redirect because of %s' % (url,e),
-                severity=WARNING)
+                severity=WARN)
     #end redirect setup
 
     #extra lines from previous --
