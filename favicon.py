@@ -112,6 +112,7 @@ class PrintFavicon(BaseHandler):
     result = opener.open(urllib2.Request(domain, headers=globals.HEADERS))
 
     if result.url:
+      cherrypy.log('URL:%s, redirected to: %s' % (url, result.url), severity=INFO)
       return self.parse(str(result.url))
     return (None, None)
 
@@ -408,9 +409,16 @@ class PrintFavicon(BaseHandler):
       self.mc.incr('counter-defaults')
       icon = self.default_icon
 
-    cherrypy.log('URL:%s, time taken to process: %f' % \
-                 (targetDomain, time() - start),
-                 severity=INFO)
+    #only return times that are greater than a threshold
+    timeTaken = time() - start
+    if timeTaken > 5:
+      cherrypy.log('URL:%s, time taken to process: %f' % \
+          (targetDomain, timeTaken),
+          severity=WARN)
+    else:
+      cherrypy.log('URL:%s, time taken to process: %f' % \
+          (targetDomain, timeTaken),
+          severity=INFO)
 
     return self.writeIcon(icon)
 
