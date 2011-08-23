@@ -50,5 +50,5 @@ if __name__=='__main__':
             os.mkdir(path)
 
     p = Pool(processes=3)
-    result = p.map(f, wordlist[855:])
+    result = p.map(f, wordlist)
 
