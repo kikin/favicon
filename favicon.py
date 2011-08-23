@@ -1,10 +1,11 @@
-import cherrypy
-import os, os.path
-import json
-import sys
-import subprocess
-import gzip
 import StringIO
+import cherrypy
+import gzip
+import json
+import os, os.path
+import signal
+import subprocess
+import sys
 
 from re import search, compile, MULTILINE, IGNORECASE
 from urlparse import urlparse, urljoin
@@ -18,6 +19,9 @@ from time import time
 
 from globals import *
 
+def timeout_handler(signum, frame):
+  raise TimeoutError()
+
 class Icon(object):
 
   def __init__(self, data=None, location=None, type=None):
@@ -26,22 +30,20 @@ class Icon(object):
     self.location = location
     self.type = type
 
-
 class TimeoutError(Exception):
 
   def __str__(self):
     return repr(TimeoutError)
-
 
 class BaseHandler(object):
 
   def __init__(self):
     super(BaseHandler, self).__init__()
     self.re = compile('%([0-9a-hA-H][0-9a-hA-H])', MULTILINE)
-  
+
   def htc(self, m):
     return chr(int(m.group(1), 16))
-  
+
   def urldecode(self, url):
     return self.re.sub(self.htc, url)
 
@@ -55,12 +57,12 @@ class PrintFavicon(BaseHandler):
     self.default_icon = Icon(data=default_icon_data,
                              location=DEFAULT_FAVICON_LOC,
                              type='image/png')
-    
+
     self.env = Environment(loader=FileSystemLoader(
                                     os.path.join(cherrypy.config['favicon.root'],
                                                  'templates')))
-    
-    self.mc = Client(['%(memcache.host)s:%(memcache.port)d' % cherrypy.config], 
+
+    self.mc = Client(['%(memcache.host)s:%(memcache.port)d' % cherrypy.config],
                      debug=2)
 
     # Initialize counters
@@ -69,7 +71,7 @@ class PrintFavicon(BaseHandler):
 
   def open(self, url, start, headers=None):
     time_spent = int(time() - start)
-    if time_spent >= TIMEOUT: 
+    if time_spent >= TIMEOUT:
       raise TimeoutError(time_spent)
 
     if not headers:
@@ -141,7 +143,7 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=iconContentTypeMagic)
 
   def useLibMagicFile(self, string):
-    process = subprocess.Popen(FILECOMMAND_SYSV,
+    process = subprocess.Popen(FILECOMMAND_BSD,
               stdin=subprocess.PIPE,stdout=subprocess.PIPE)
     out, err = process.communicate(input=string)
     #example out= '/dev/stdin: image/x-ico; charset=binary'
@@ -159,7 +161,7 @@ class PrintFavicon(BaseHandler):
   def iconAtRoot(self, targetDomain, start):
     cherrypy.log('Attempting to locate favicon for domain:%s at root' % \
                  targetDomain,
-                 severity=DEBUG)
+                 severity=WARNING)
 
     rootIconPath = urljoin(targetDomain, '/favicon.ico')
 
@@ -191,8 +193,8 @@ class PrintFavicon(BaseHandler):
 
       if rootDomainPageResult.getcode() == 200:
         pageSoup = BeautifulSoup(rootDomainPageResult.read())
-        pageSoupIcon = pageSoup.find('link', 
-                                     rel=compile('^(shortcut|icon|shortcut icon)$', 
+        pageSoupIcon = pageSoup.find('link',
+                                     rel=compile('^(shortcut|icon|shortcut icon)$',
                                      IGNORECASE))
 
         if pageSoupIcon:
@@ -232,7 +234,7 @@ class PrintFavicon(BaseHandler):
                                flags=IGNORECASE)
 
                 if match:
-                  refreshPath = urljoin(rootDomainPageResult.geturl(), 
+                  refreshPath = urljoin(rootDomainPageResult.geturl(),
                                         match.group(1)).strip()
 
                   cherrypy.log('Processing refresh directive:%s for domain:%s' % \
@@ -263,7 +265,7 @@ class PrintFavicon(BaseHandler):
 
   def cacheIconLoc(self, domain, loc):
     cherrypy.log('Caching location:%s for domain:%s' % (loc, domain),
-                 severity=WARNING)
+                 severity=DEBUG)
 
     if not self.mc.set('icon_loc-%s' % str(domain),
                        str(loc),
@@ -284,8 +286,12 @@ class PrintFavicon(BaseHandler):
         return self.default_icon
 
       else:
-        iconResult = self.open(icon_loc, start)
-        icon = self.validateIconResponse(iconResult)
+        try:
+          iconResult = self.open(icon_loc, start)
+          icon = self.validateIconResponse(iconResult)
+        except TimeoutError as e:
+          cherrpy.log("TimeoutError: %s" % e, severity=ERROR)
+          return None
 
         if icon:
           self.mc.incr('counter-hits')
@@ -309,6 +315,21 @@ class PrintFavicon(BaseHandler):
     cherrypy.response.headers['Cache-Control'] = 'public, max-age=2592000'
     cherrypy.response.headers['Expires'] = \
                           (datetime.now() + timedelta(days=30)).strftime(fmt)
+
+  def parentLoc(self, url):
+    urlPieces = urlparse(self.urldecode(url))
+    if not urlPieces or not urlPieces.scheme or not urlPieces.netloc:
+      raise cherrypy.HTTPError(400, 'Malformed URL:%s' % url)
+
+    parts = urlPieces.netloc.split('.')
+    if len(parts) > 2:
+      parent = '.'.join(parts[1:])
+    else:
+      parent = None
+
+    cherrypy.log('domain:%s, parent:%s' % (urlPieces.netloc, parent),
+                  severity=INFO)
+    return parent
 
   def parse(self, url):
     # Get page path
@@ -337,14 +358,14 @@ class PrintFavicon(BaseHandler):
 
   @cherrypy.expose
   def test(self):
-    topSites = open(os.path.join(cherrypy.config['favicon.root'], 
+    topSites = open(os.path.join(cherrypy.config['favicon.root'],
                                  'topsites.txt'), 'r').read().split()
     template = self.env.get_template('test.html')
     return template.render(topSites=topSites)
 
   @cherrypy.expose
   def clear(self, url):
-    cherrypy.log('Incoming cache invalidation request:%s' % url, 
+    cherrypy.log('Incoming cache invalidation request:%s' % url,
                  severity=DEBUG)
 
     targetPath, targetDomain = self.parse(str(url))
@@ -370,24 +391,28 @@ class PrintFavicon(BaseHandler):
 
     #follow redirect for targetDomain -- ought to be in a separate function,
     #just like self.parse()
-    redirectedDomain = targetDomain
+    redirectedPath, redirectedDomain = targetPath, targetDomain
+    parentDomain = targetDomain
     temp_opener = build_opener()
     try:
-        temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
+      temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
                 timeout=CONNECTION_TIMEOUT)
-    except UrlError as e:
-        cherrypy.log('Url:%s - failed to load/redirect' % url,
+      if temp_result.url:
+        redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
+        parentDomain = self.parentLoc(temp_result.url)
+        if parentDomain is None:
+          parentDomain = targetDomain
+    except Exception as e:
+      cherrypy.log('Url:%s - failed to load/redirect because of %s' % (url,e),
                 severity=WARNING)
-
-    if temp_result.url:
-      redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
     #end redirect setup
 
-    #extra lines from previous -- 
+    #extra lines from previous --
     #last line is for sites like blogger.com at the time of this writing
     icon = (not skipCache and self.iconInCache(redirectedDomain, start)) or \
            self.iconInPage(redirectedDomain, redirectedPath, start) or \
            self.iconAtRoot(redirectedDomain, start) or \
+           self.iconAtRoot(parentDomain, start) or \
            self.iconAtRoot(targetDomain, start)
 
     if not icon:
@@ -414,8 +439,9 @@ if __name__ == '__main__':
   FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
         + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
   stream.setFormatter(FORMATTER)
-  #cherrypy.log.error_log.setLevel(DEBUG)
-  #stream.setLevel(DEBUG)
+  cherrypy.log.error_log.setLevel(DEBUG)
+  stream.setLevel(DEBUG)
 
   cherrypy.quickstart(PrintFavicon(), config=config)
 
+# vim: sts=2:sw=2:ts=2
