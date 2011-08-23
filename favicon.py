@@ -63,7 +63,7 @@ class BaseHandler(object):
 
   def __init__(self):
     super(BaseHandler, self).__init__()
-    self.re = re.compile('%([0-9a-hA-H][0-9a-hA-H])', re.MULTILINE)
+    self.re = globals.RE_URLDECODE
 
   def htc(self, m):
     return chr(int(m.group(1), 16))
@@ -152,28 +152,27 @@ class PrintFavicon(BaseHandler):
     '''check for icon at [domain]/favicon.ico'''
     cherrypy.log('URL:%s/favicon.ico Searching...' % domain, severity=DEBUG)
     path = urlparse.urljoin(domain, '/favicon.ico')
-
     result = self.open(path, start)
     rootIcon = self.validateIcon(result)
 
     if rootIcon:
       cherrypy.log('URL:%s/favicon.ico Found' % domain, severity=INFO)
-
       rootIcon.location = path
       return rootIcon
+    return None
 
   # Icon specified in page?
   def iconInPage(self, domain, path, start, refresh=True):
-    cherrypy.log('Attempting to locate embedded favicon link in page:%s' % \
-                 path, severity=DEBUG)
+    '''check for icon in <link rel="icon"> tag
+    Follow http-equiv meta-refreshes if necessary'''
+    cherrypy.log('URL:%s searching for <link> tag' % path, severity=DEBUG)
 
     try:
       rootDomainPageResult = self.open(path, start)
 
       if rootDomainPageResult.getcode() == 200:
         pageSoup = BeautifulSoup(rootDomainPageResult.read())
-        pageSoupIcon = pageSoup.find('link',
-            rel=re.compile('^(shortcut|icon|shortcut icon)$', re.IGNORECASE))
+        pageSoupIcon = pageSoup.find('link', rel=globals.RE_LINKTAG)
 
         if pageSoupIcon:
           pageIconHref = pageSoupIcon.get('href')

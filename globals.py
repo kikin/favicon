@@ -1,3 +1,5 @@
+import re
+
 ICON_MIMETYPE_BLACKLIST = [
   'application/xml',
   'text/html',
@@ -10,6 +12,9 @@ MAX_ICON_LENGTH = 20000
 MC_CACHE_TIME = 2419200 # seconds (28 days)
 
 KEY_FORMAT = 'icon_loc-%s'
+
+RE_URLDECODE = re.compile('%([0-9a-hA-H][0-9a-hA-H])', re.MULTILINE)
+RE_LINKTAG = re.compile('^(shortcut|icon|shortcut icon)$', re.IGNORECASE)
 
 DEFAULT_FAVICON_LOC = 'http://d3gibmfbqm9w63.cloudfront.net/img/static/default_favicon.png'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; ' +
