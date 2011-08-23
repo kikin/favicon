@@ -19,8 +19,27 @@ from logging import DEBUG, INFO, WARN, ERROR, Formatter
 from time import time
 from urllib2 import HTTPCookieProcessor, Request, build_opener
 
+# helper methods
+
 def timeout_handler(signum, frame):
   raise TimeoutError()
+
+def useLibMagicFile(string):
+  '''example out= '/dev/stdin: image/x-ico; charset=binary'
+  out.split()[1][0:-1] = image/x-ico'''
+  process = subprocess.Popen(globals.FILECOMMAND_BSD,
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+  out, err = process.communicate(input=string)
+  return out.split()[1][0:-1]
+
+def gunzipIconFile(stream):
+  '''don't use for even moderately big files'''
+  f = StringIO.StringIO(stream)
+  output = gzip.GzipFile(fileobj=f).read()
+  f.close()
+  return output
+
+# classes
 
 class Icon(object):
 
@@ -105,13 +124,13 @@ class PrintFavicon(BaseHandler):
     iconContentType = iconResponse.info().gettype()
     #hopefully the icon sent is never super duper big
     try:
-      iconContentTypeMagic = self.useLibMagicFile(icon)
+      iconContentTypeMagic = useLibMagicFile(icon)
       if 'gzip' in iconContentTypeMagic.lower():
         cherrypy.log('Type of %s is gzip, unzipping...' % iconResponse.geturl(),
                     severity=WARN)
-        icon = self.gunzipIconFile(icon)
+        icon = gunzipIconFile(icon)
         #checking mimetype again
-        iconContentTypeMagic = self.useLibMagicFile(icon)
+        iconContentTypeMagic = useLibMagicFile(icon)
 
     except Exception as e:
       iconContentTypeMagic = iconContentType
@@ -141,21 +160,6 @@ class PrintFavicon(BaseHandler):
                    severity=WARN)
 
     return Icon(data=icon, type=iconContentTypeMagic)
-
-  def useLibMagicFile(self, string):
-    process = subprocess.Popen(globals.FILECOMMAND_BSD,
-              stdin=subprocess.PIPE,stdout=subprocess.PIPE)
-    out, err = process.communicate(input=string)
-    #example out= '/dev/stdin: image/x-ico; charset=binary'
-    #out.split()[1][0:-1] = image/x-ico
-    return out.split()[1][0:-1]
-
-  def gunzipIconFile(self, stream):
-    f = StringIO.StringIO(stream)
-    output = gzip.GzipFile(fileobj=f).read()
-    f.close()
-    return output
-
 
   # Icon at [domain]/favicon.ico?
   def iconAtRoot(self, targetDomain, start):
