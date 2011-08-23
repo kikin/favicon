@@ -105,6 +105,16 @@ class PrintFavicon(BaseHandler):
 
     return result
 
+  def followRedirect(self,url):
+    path, domain = self.parse(str(url))
+
+    opener = urllib2.build_opener()
+    result = opener.open(urllib2.Request(domain, headers=globals.HEADERS))
+
+    if result.url:
+      return self.parse(str(result.url))
+    return (None, None)
+
   def validateIcon(self, iconResponse):
     '''Figures out mimetype and whether to gunzip.
     Thrown through a bunch of validation tests.
@@ -158,6 +168,7 @@ class PrintFavicon(BaseHandler):
     if rootIcon:
       cherrypy.log('URL:%s/favicon.ico Found' % domain, severity=INFO)
       rootIcon.location = path
+      self.cacheIcon(domain, path)
       return rootIcon
     return None
 
@@ -291,10 +302,12 @@ class PrintFavicon(BaseHandler):
     cherrypy.response.headers['Expires'] = \
                           (datetime.now() + timedelta(days=30)).strftime(fmt)
 
-  def parentLoc(self, url):
+  def parentLocation(self, url):
     urlPieces = urlparse.urlparse(self.urldecode(url))
+    print urlPieces
     if not urlPieces or not urlPieces.scheme or not urlPieces.netloc:
-      raise cherrypy.HTTPError(400, 'Malformed URL:%s' % url)
+      cherrypy.log('URL:%s, no parent' % url, severity=DEBUG)
+      return None
 
     parts = urlPieces.netloc.split('.')
     if len(parts) > 2:
@@ -310,7 +323,7 @@ class PrintFavicon(BaseHandler):
     targetPath = self.urldecode(url)
     if not targetPath.startswith('http'):
       targetPath = 'http://%s' % targetPath
-    cherrypy.log('URL:%s decoded' % targetPath, severity=DEBUG)
+    cherrypy.log('URL:%s, decoded' % targetPath, severity=DEBUG)
 
     # Split path to get domain
     targetURL = urlparse.urlparse(targetPath)
