@@ -101,7 +101,7 @@ class PrintFavicon(BaseHandler):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor())
     result = opener.open(urllib2.Request(url, headers=headers),
         timeout=min(globals.CONNECTION_TIMEOUT, globals.TIMEOUT - time_spent))
-    cherrypy.log('%s =redirect=> %s' % (url, result.url), severity=DEBUG)
+    cherrypy.log('URL:%s =redirect=> %s' % (url, result.url), severity=DEBUG)
 
     return result
 
@@ -196,8 +196,8 @@ class PrintFavicon(BaseHandler):
 
           if pageIconHref:
             pageIconPath = urlparse.urljoin(path, pageIconHref)
-            cherrypy.log('Found embedded favicon link:%s for domain:%s' % \
-                         (pageIconPath, domain), severity=DEBUG)
+            cherrypy.log('URL:%s, found embedded favicon link at %s' % \
+                         (domain, pageIconPath), severity=DEBUG)
 
             cookies = rootDomainPageResult.headers.getheaders("Set-Cookie")
             headers = None
@@ -210,8 +210,8 @@ class PrintFavicon(BaseHandler):
 
             pageIcon = self.validateIcon(pagePathFaviconResult)
             if pageIcon:
-              cherrypy.log('Found favicon at:%s for domain:%s' % \
-                           (pageIconPath, domain),
+              cherrypy.log('URL:%s, found favicon at %s' % \
+                           (domain, pageIconPath),
                            severity=DEBUG)
 
               self.cacheIcon(domain, pageIconPath)
@@ -278,7 +278,8 @@ class PrintFavicon(BaseHandler):
           iconResult = self.open(icon_loc, start)
           icon = self.validateIcon(iconResult)
         except TimeoutError as e:
-          cherrypy.log("TimeoutError: %s" % e, severity=ERROR)
+          cherrypy.log("URL:%s, TimeoutError: %s" % (targetDomain, e),
+              severity=ERROR)
           return None
 
         if icon:
@@ -383,7 +384,7 @@ class PrintFavicon(BaseHandler):
     try:
       redirectedPath, redirectedDomain = self.followRedirect(url)
     except IOError as e:
-      cherrypy.log('Url:%s, Unexpected IOError %s' % (url,e), severity=WARN)
+      cherrypy.log('URL:%s, Unexpected IOError %s' % (url,e), severity=WARN)
 
     #set up parentDomain
     if self.parentLocation(redirectedDomain):
@@ -400,14 +401,14 @@ class PrintFavicon(BaseHandler):
            self.iconAtRoot(targetDomain, start)
 
     if not icon:
-      cherrypy.log('Falling back to default icon for:%s' % targetDomain,
+      cherrypy.log('URL:%s, falling back to default icon' % targetDomain,
                    severity=DEBUG)
 
       self.cacheIcon(targetDomain, globals.DEFAULT_FAVICON_LOC)
       self.mc.incr('counter-defaults')
       icon = self.default_icon
 
-    cherrypy.log('Time taken to process domain:%s %f' % \
+    cherrypy.log('URL:%s, time taken to process: %f' % \
                  (targetDomain, time() - start),
                  severity=INFO)
 
