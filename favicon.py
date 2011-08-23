@@ -112,7 +112,7 @@ class PrintFavicon(BaseHandler):
     result = opener.open(urllib2.Request(domain, headers=globals.HEADERS))
 
     if result.url:
-      cherrypy.log('URL:%s, redirected to: %s' % (url, result.url), severity=INFO)
+      cherrypy.log('URL:%s, redirected to: %s' % (url, result.url), severity=WARNING)
       return self.parse(str(result.url))
     return (None, None)
 
@@ -137,7 +137,7 @@ class PrintFavicon(BaseHandler):
 
     try:
       contentType = libmagic(icon)
-    except OSError as e:
+    except (OSError, ValueError) as e:
       cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
       return None
 
@@ -146,7 +146,7 @@ class PrintFavicon(BaseHandler):
       icon = gunzip(icon)
       try:
         contentType = libmagic(icon)
-      except OSError as e:
+      except (OSError, ValueError) as e:
         cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
 
     if contentType in globals.ICON_MIMETYPE_BLACKLIST:
