@@ -18,6 +18,11 @@ from jinja2 import Environment, FileSystemLoader
 from logging import DEBUG, INFO, WARN, ERROR, Formatter, handlers
 from time import time
 
+# setup CherryPy
+#app = cherrypy.tree.mount(PrintFavicon(),config=config)
+app = cherrypy
+
+
 # helper methods
 
 def timeout_handler(signum, frame):
@@ -255,6 +260,7 @@ class PrintFavicon(BaseHandler):
   def cacheIcon(self, domain, location):
     '''Used to cache to self.mc'''
     key = globals.KEY_FORMAT % str(domain)
+    print "WHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT " + key
     cherrypy.log('key=%s, value=%s' % (key, location), severity=DEBUG)
 
     ret = self.mc.set(key, str(location),
@@ -429,8 +435,6 @@ if __name__ == '__main__':
   cherrypy.config.update(config)
   cherrypy.config.update({'favicon.root': os.getcwd()})
 
-  app = cherrypy.tree.mount(PrintFavicon(),config=config)
-
   FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
         + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
   app.log.error_file = ''
@@ -452,7 +456,8 @@ if __name__ == '__main__':
   h.setFormatter(FORMATTER)
   app.log.access_log.addHandler(h)
 
-  #start
-  cherrypy.server.start()
+  app.log.error_log.setLevel(DEBUG)
+  cherrypy.quickstart(PrintFavicon(), config=config)
+  #cherrypy.server.start()
 
 # vim: sts=2:sw=2:ts=2:tw=85:cc=85
