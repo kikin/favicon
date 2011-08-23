@@ -15,7 +15,7 @@ import globals
 from BeautifulSoup import BeautifulSoup
 from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
-from logging import DEBUG, INFO, WARN, ERROR, Formatter
+from logging import DEBUG, INFO, WARN, ERROR, Formatter, handlers
 from time import time
 
 # helper methods
@@ -149,7 +149,8 @@ class PrintFavicon(BaseHandler):
         cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
 
     if contentType in globals.ICON_MIMETYPE_BLACKLIST:
-      cherrypy.log('URL:%s Content-Type:%s blacklisted', severity=ERROR)
+      cherrypy.log('URL:%s Content-Type:%s blacklisted' % (url, contentType),
+          severity=ERROR)
       return None
 
     if length < globals.MIN_ICON_LENGTH or length > globals.MAX_ICON_LENGTH:
@@ -162,8 +163,13 @@ class PrintFavicon(BaseHandler):
     '''check for icon at [domain]/favicon.ico'''
     cherrypy.log('URL:%s/favicon.ico Searching...' % domain, severity=DEBUG)
     path = urlparse.urljoin(domain, '/favicon.ico')
-    result = self.open(path, start)
-    rootIcon = self.validateIcon(result)
+    rootIcon = None
+    try:
+      result = self.open(path, start)
+      rootIcon = self.validateIcon(result)
+    except (TimeoutError, IOError) as e:
+      cherrypy.log('URL:%s/favicon.ico Error %s' % (domain, e), severity=ERROR)
+      return None
 
     if rootIcon:
       cherrypy.log('URL:%s/favicon.ico Found' % domain, severity=INFO)
@@ -216,17 +222,15 @@ class PrintFavicon(BaseHandler):
           if refresh:
             for meta in pageSoup.findAll('meta'):
               if meta.get('http-equiv', '').lower() == 'refresh':
-                match = re.search('url=([^;]+)',
-                               meta.get('content', ''),
-                               flags=re.IGNORECASE)
+                match = globals.RE_METAREFRESH.search(meta.get('content', ''))
 
                 if match:
                   refreshPath = urlparse.urljoin(rootDomainPageResult.geturl(),
                                         match.group(1)).strip()
 
-                  cherrypy.log('Processing refresh directive:%s for domain:%s' % \
-                               (refreshPath, domain),
-                               severity=DEBUG)
+                  cherrypy.log('URL:%s, refresh directive: %s' % \
+                               (domain, refreshPath),
+                               severity=WARN)
 
                   icon = self.iconInPage(domain,
                                          refreshPath,
@@ -234,20 +238,18 @@ class PrintFavicon(BaseHandler):
                                          refresh=False) or \
                          self.iconAtRoot(refreshPath,
                                          start)
-
                   return icon
 
-
-          cherrypy.log('No link tag found:%s' % path, severity=DEBUG)
+          cherrypy.log('URL:%s no <link> tag found' % path, severity=DEBUG)
 
       else:
-        cherrypy.log('Non-success response:%d for url:%s' % \
-                     (rootDomainPageResult.getcode(), path),
-                     severity=DEBUG)
+        cherrypy.log('URL:%s, unsuccessful response %s' % \
+                     (path, rootDomainPageResult.getcode()), severity=DEBUG)
+        return None
 
-    except Exception as e:
-      cherrypy.log('Error extracting favicon from page:%s, err:%s' % \
-                   (path, e), severity=ERROR)
+    except (TimeoutError, IOError) as e:
+      cherrypy.log('URL:%s, Error: %s' % (path, e), severity=ERROR)
+      return None
 
   def cacheIcon(self, domain, location):
     '''Used to cache to self.mc'''
@@ -303,20 +305,19 @@ class PrintFavicon(BaseHandler):
                           (datetime.now() + timedelta(days=30)).strftime(fmt)
 
   def parentLocation(self, url):
+    '''parent location for 'investing.businessweek.com' is 'businessweek.com' '''
     urlPieces = urlparse.urlparse(self.urldecode(url))
-    print urlPieces
-    if not urlPieces or not urlPieces.scheme or not urlPieces.netloc:
-      cherrypy.log('URL:%s, no parent' % url, severity=DEBUG)
+    if not urlPieces.netloc or not urlPieces.scheme:
+      cherrypy.log('URL:%s, parent:void' % url, severity=DEBUG)
       return None
 
     parts = urlPieces.netloc.split('.')
     if len(parts) > 2:
       parent = '.'.join(parts[1:])
-    else:
-      parent = None
+      cherrypy.log('URL:%s, parent:%s' % (urlPieces.netloc, parent), severity=DEBUG)
+      return '%s://%s' % (urlPieces.scheme, parent)
+    return None
 
-    cherrypy.log('URL:%s, parent:%s' % (urlPieces.netloc, parent), severity=DEBUG)
-    return parent
 
   def parse(self, url):
     # Get page path
@@ -379,20 +380,16 @@ class PrintFavicon(BaseHandler):
     #follow redirect for targetDomain -- ought to be in a separate function,
     #just like self.parse()
     redirectedPath, redirectedDomain = targetPath, targetDomain
-    parentDomain = targetDomain
-    temp_opener = urllib2.build_opener()
     try:
-      temp_result = temp_opener.open(urllib2.Request(targetDomain, headers=globals.HEADERS),
-                timeout=globals.CONNECTION_TIMEOUT)
-      if temp_result.url:
-        redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
-        parentDomain = self.parentLoc(temp_result.url)
-        if parentDomain is None:
-          parentDomain = targetDomain
-    except Exception as e:
-      cherrypy.log('Url:%s - failed to load/redirect because of %s' % (url,e),
-                severity=WARN)
-    #end redirect setup
+      redirectedPath, redirectedDomain = self.followRedirect(url)
+    except IOError as e:
+      cherrypy.log('Url:%s, Unexpected IOError %s' % (url,e), severity=WARN)
+
+    #set up parentDomain
+    if self.parentLocation(redirectedDomain):
+      parentDomain = self.parentLocation(redirectedDomain)
+    else:
+      parentDomain = self.parentLocation(targetDomain)
 
     #extra lines from previous --
     #last line is for sites like blogger.com at the time of this writing
@@ -422,13 +419,35 @@ if __name__ == '__main__':
 
   cherrypy.config.update(config)
   cherrypy.config.update({'favicon.root': os.getcwd()})
-  stream = cherrypy.log.error_log.handlers[0]
+
+  app = cherrypy.tree.mount(PrintFavicon(),config=config)
+
   FORMATTER = Formatter(fmt="FILE:%(filename)-12s FUNC:%(funcName)-16s"
         + " LINE:%(lineno)-4s %(levelname)-8s %(message)s")
-  stream.setFormatter(FORMATTER)
-  cherrypy.log.error_log.setLevel(DEBUG)
-  stream.setLevel(DEBUG)
+  app.log.error_file = ''
+  app.log.access_file = ''
+  maxBytes = pow(1024,3)
+  backupCount = 2
 
-  cherrypy.quickstart(PrintFavicon(), config=config)
+  # Make a new RotatingFileHandler for the error log.
+  fname = getattr(app.log, "rot_error_file", "log_error.log")
+  h = handlers.RotatingFileHandler(fname, 'a', maxBytes, backupCount)
+  h.setLevel(DEBUG)
+  h.setFormatter(FORMATTER)
+  app.log.error_log.addHandler(h)
+
+  # Make a new RotatingFileHandler for the access log.
+  fname = getattr(app.log, "rot_access_file", "log_access.log")
+  h = handlers.RotatingFileHandler(fname, 'a', maxBytes, backupCount)
+  h.setLevel(DEBUG)
+  h.setFormatter(FORMATTER)
+  app.log.access_log.addHandler(h)
+
+  #start
+  cherrypy.server.start()
+  #cherrypy.server.quickstart()
+  #cherrypy.engine.start()
+
+  #cherrypy.quickstart(PrintFavicon(), config=config)
 
 # vim: sts=2:sw=2:ts=2:tw=85
