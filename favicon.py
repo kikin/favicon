@@ -7,7 +7,6 @@ import os, os.path
 import re
 #import signal
 import subprocess
-import sys
 import urllib2
 import urlparse
 
