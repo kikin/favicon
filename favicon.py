@@ -445,9 +445,5 @@ if __name__ == '__main__':
 
   #start
   cherrypy.server.start()
-  #cherrypy.server.quickstart()
-  #cherrypy.engine.start()
 
-  #cherrypy.quickstart(PrintFavicon(), config=config)
-
-# vim: sts=2:sw=2:ts=2:tw=85
+# vim: sts=2:sw=2:ts=2:tw=85:cc=85
