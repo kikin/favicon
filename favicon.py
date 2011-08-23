@@ -255,7 +255,6 @@ class PrintFavicon(BaseHandler):
   def cacheIcon(self, domain, location):
     '''Used to cache to self.mc'''
     key = globals.KEY_FORMAT % str(domain)
-    print "WHAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT " + key
     cherrypy.log('key=%s, value=%s' % (key, location), severity=DEBUG)
 
     ret = self.mc.set(key, str(location),
