@@ -40,10 +40,22 @@ def gunzip(stream):
   f.close()
   return output
 
+def figure_out(icon,contentType=None):
+  '''figure out icon.type and whether to gunzip
+  returns Icon or None if error'''
+  length = len(icon)
+
+  if not length:
+    return None
+  if not contentType:
+    contentType = libmagic(icon)
+
+
+  return None
+
 # classes
 
 class Icon(object):
-
   def __init__(self, data=None, location=None, type=None):
     super(Icon, self).__init__()
     self.data = data
