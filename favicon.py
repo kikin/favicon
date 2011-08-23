@@ -149,28 +149,18 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=contentType)
 
   def iconAtRoot(self, domain, start):
-    '''check for icon at [domain]/favicon.ico?'''
-    cherrypy.log('Attempting to locate favicon for domain:%s at root' % \
-                 domain,
-                 severity=WARN)
+    '''check for icon at [domain]/favicon.ico'''
+    cherrypy.log('URL:%s/favicon.ico Searching...' % domain, severity=DEBUG)
+    path = urlparse.urljoin(domain, '/favicon.ico')
 
-    rootIconPath = urlparse.urljoin(domain, '/favicon.ico')
+    result = self.open(path, start)
+    rootIcon = self.validateIcon(result)
 
-    try:
-      rootDomainFaviconResult = self.open(rootIconPath, start)
-      rootIcon = self.validateIcon(rootDomainFaviconResult)
+    if rootIcon:
+      cherrypy.log('URL:%s/favicon.ico Found' % domain, severity=INFO)
 
-      if rootIcon:
-        cherrypy.log('Found favicon for domain:%s at root' % domain,
-                     severity=DEBUG)
-
-        self.cacheIcon(domain, rootIconPath)
-        rootIcon.location = rootIconPath
-        return rootIcon
-
-    except Exception as e:
-      cherrypy.log('Error fetching favicon at domain root:%s, err:%s' % \
-                   (domain, e), severity=ERROR)
+      rootIcon.location = path
+      return rootIcon
 
   # Icon specified in page?
   def iconInPage(self, domain, path, start, refresh=True):
