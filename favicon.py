@@ -24,7 +24,7 @@ from urllib2 import HTTPCookieProcessor, Request, build_opener
 def timeout_handler(signum, frame):
   raise TimeoutError()
 
-def useLibMagicFile(string):
+def libmagic(string):
   '''example out= '/dev/stdin: image/x-ico; charset=binary'
   out.split()[1][0:-1] = image/x-ico'''
   process = subprocess.Popen(globals.FILECOMMAND_BSD,
@@ -32,7 +32,7 @@ def useLibMagicFile(string):
   out, err = process.communicate(input=string)
   return out.split()[1][0:-1]
 
-def gunzipIconFile(stream):
+def gunzip(stream):
   '''don't use for even moderately big files'''
   f = StringIO.StringIO(stream)
   output = gzip.GzipFile(fileobj=f).read()
@@ -74,15 +74,14 @@ class PrintFavicon(BaseHandler):
 
     default_icon_data = self.open(globals.DEFAULT_FAVICON_LOC, time()).read()
     self.default_icon = Icon(data=default_icon_data,
-                             location=globals.DEFAULT_FAVICON_LOC,
-                             type='image/png')
+        location=globals.DEFAULT_FAVICON_LOC,
+        type='image/png')
 
     self.env = Environment(loader=FileSystemLoader(
-                                    os.path.join(cherrypy.config['favicon.root'],
-                                                 'templates')))
+      os.path.join(cherrypy.config['favicon.root'], 'templates')))
 
     self.mc = memcache.Client(['%(memcache.host)s:%(memcache.port)d' %
-      cherrypy.config], debug=2)
+                cherrypy.config], debug=2)
 
     # Initialize counters
     for counter in ['requests', 'hits', 'defaults']:
@@ -97,7 +96,6 @@ class PrintFavicon(BaseHandler):
       headers = dict()
     headers.update(globals.HEADERS)
 
-    #opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
     opener = build_opener(HTTPCookieProcessor())
     result = opener.open(Request(url, headers=headers),
                        timeout=min(globals.CONNECTION_TIMEOUT, globals.TIMEOUT - time_spent))
@@ -124,13 +122,13 @@ class PrintFavicon(BaseHandler):
     iconContentType = iconResponse.info().gettype()
     #hopefully the icon sent is never super duper big
     try:
-      iconContentTypeMagic = useLibMagicFile(icon)
+      iconContentTypeMagic = libmagic(icon)
       if 'gzip' in iconContentTypeMagic.lower():
         cherrypy.log('Type of %s is gzip, unzipping...' % iconResponse.geturl(),
                     severity=WARN)
-        icon = gunzipIconFile(icon)
+        icon = gunzip(icon)
         #checking mimetype again
-        iconContentTypeMagic = useLibMagicFile(icon)
+        iconContentTypeMagic = libmagic(icon)
 
     except Exception as e:
       iconContentTypeMagic = iconContentType
