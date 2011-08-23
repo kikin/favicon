@@ -167,7 +167,7 @@ class PrintFavicon(BaseHandler):
     try:
       result = self.open(path, start)
       rootIcon = self.validateIcon(result)
-    except (TimeoutError, IOError) as e:
+    except (TimeoutError, IOError, ValueError) as e:
       cherrypy.log('URL:%s/favicon.ico Error %s' % (domain, e), severity=ERROR)
       return None
 
