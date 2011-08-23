@@ -5,7 +5,7 @@ import json
 import memcache
 import os, os.path
 import re
-import signal
+#import signal
 import subprocess
 import sys
 import urlparse
@@ -18,8 +18,6 @@ from jinja2 import Environment, FileSystemLoader
 from logging import DEBUG, INFO, WARN, ERROR, Formatter
 from time import time
 from urllib2 import HTTPCookieProcessor, Request, build_opener
-
-from globals import *
 
 def timeout_handler(signum, frame):
   raise TimeoutError()
@@ -55,9 +53,9 @@ class PrintFavicon(BaseHandler):
   def __init__(self):
     super(PrintFavicon, self).__init__()
 
-    default_icon_data = self.open(DEFAULT_FAVICON_LOC, time()).read()
+    default_icon_data = self.open(globals.DEFAULT_FAVICON_LOC, time()).read()
     self.default_icon = Icon(data=default_icon_data,
-                             location=DEFAULT_FAVICON_LOC,
+                             location=globals.DEFAULT_FAVICON_LOC,
                              type='image/png')
 
     self.env = Environment(loader=FileSystemLoader(
@@ -73,17 +71,17 @@ class PrintFavicon(BaseHandler):
 
   def open(self, url, start, headers=None):
     time_spent = int(time() - start)
-    if time_spent >= TIMEOUT:
+    if time_spent >= globals.TIMEOUT:
       raise TimeoutError(time_spent)
 
     if not headers:
       headers = dict()
-    headers.update(HEADERS)
+    headers.update(globals.HEADERS)
 
     #opener = build_opener(HTTPRedirectHandler(), HTTPCookieProcessor())
     opener = build_opener(HTTPCookieProcessor())
     result = opener.open(Request(url, headers=headers),
-                       timeout=min(CONNECTION_TIMEOUT, TIMEOUT - time_spent))
+                       timeout=min(globals.CONNECTION_TIMEOUT, globals.TIMEOUT - time_spent))
     cherrypy.log('%s =redirect=> %s' % (url, result.url), severity=DEBUG)
 
     return result
@@ -130,13 +128,13 @@ class PrintFavicon(BaseHandler):
                    (iconContentType, iconContentTypeMagic),
                    severity=WARN)
 
-    if iconContentTypeMagic in ICON_MIMETYPE_BLACKLIST:
+    if iconContentTypeMagic in globals.ICON_MIMETYPE_BLACKLIST:
       cherrypy.log('Url:%s favicon content-Type:%s blacklisted' % \
                    (iconResponse.geturl(), iconContentType),
                    severity=WARN)
       return None
 
-    if iconLength < MIN_ICON_LENGTH or iconLength > MAX_ICON_LENGTH:
+    if iconLength < globals.MIN_ICON_LENGTH or iconLength > globals.MAX_ICON_LENGTH:
       # Issue warning, but accept nonetheless!
       cherrypy.log('Warning: url:%s favicon size:%d out of bounds' % \
                    (iconResponse.geturl(), iconLength),
@@ -145,7 +143,7 @@ class PrintFavicon(BaseHandler):
     return Icon(data=icon, type=iconContentTypeMagic)
 
   def useLibMagicFile(self, string):
-    process = subprocess.Popen(FILECOMMAND_BSD,
+    process = subprocess.Popen(globals.FILECOMMAND_BSD,
               stdin=subprocess.PIPE,stdout=subprocess.PIPE)
     out, err = process.communicate(input=string)
     #example out= '/dev/stdin: image/x-ico; charset=binary'
@@ -271,7 +269,7 @@ class PrintFavicon(BaseHandler):
 
     if not self.mc.set('icon_loc-%s' % str(domain),
                        str(loc),
-                       time=MC_CACHE_TIME):
+                       time=globals.MC_CACHE_TIME):
       cherrypy.log('Could not cache icon location for domain:%s' % domain,
                    severity=ERROR)
 
@@ -281,7 +279,7 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Cache hit:%s, location:%s' % (targetDomain, icon_loc),
                    severity=DEBUG)
 
-      if icon_loc == DEFAULT_FAVICON_LOC:
+      if icon_loc == globals.DEFAULT_FAVICON_LOC:
         self.mc.incr('counter-hits')
         self.mc.incr('counter-defaults')
         cherrypy.response.headers['X-Cache'] = 'Hit'
@@ -292,7 +290,7 @@ class PrintFavicon(BaseHandler):
           iconResult = self.open(icon_loc, start)
           icon = self.validateIconResponse(iconResult)
         except TimeoutError as e:
-          cherrpy.log("TimeoutError: %s" % e, severity=ERROR)
+          cherrypy.log("TimeoutError: %s" % e, severity=ERROR)
           return None
 
         if icon:
@@ -397,8 +395,8 @@ class PrintFavicon(BaseHandler):
     parentDomain = targetDomain
     temp_opener = build_opener()
     try:
-      temp_result = temp_opener.open(Request(targetDomain, headers=HEADERS),
-                timeout=CONNECTION_TIMEOUT)
+      temp_result = temp_opener.open(Request(targetDomain, headers=globals.HEADERS),
+                timeout=globals.CONNECTION_TIMEOUT)
       if temp_result.url:
         redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
         parentDomain = self.parentLoc(temp_result.url)
@@ -421,7 +419,7 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Falling back to default icon for:%s' % targetDomain,
                    severity=DEBUG)
 
-      self.cacheIconLoc(targetDomain, DEFAULT_FAVICON_LOC)
+      self.cacheIconLoc(targetDomain, globals.DEFAULT_FAVICON_LOC)
       self.mc.incr('counter-defaults')
       icon = self.default_icon
 
