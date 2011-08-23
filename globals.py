@@ -9,6 +9,8 @@ MAX_ICON_LENGTH = 20000
 
 MC_CACHE_TIME = 2419200 # seconds (28 days)
 
+KEY_FORMAT = 'icon_loc-%s'
+
 DEFAULT_FAVICON_LOC = 'http://d3gibmfbqm9w63.cloudfront.net/img/static/default_favicon.png'
 HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; ' +
                                   'rv:1.9.2.13) Gecko/20101203 Firefox/3.6.13'}

@@ -105,7 +105,7 @@ class PrintFavicon(BaseHandler):
 
     return result
 
-  def validateIconResponse(self, iconResponse):
+  def validateIcon(self, iconResponse):
     '''Figures out mimetype and whether to gunzip.
     Thrown through a bunch of validation tests.
     No real reason to be an instance method.
@@ -138,7 +138,6 @@ class PrintFavicon(BaseHandler):
       except OSError as e:
         cherrypy.log('URL:%s Unexpected OSError: %s' % (url, e), severity=ERROR)
 
-
     if contentType in globals.ICON_MIMETYPE_BLACKLIST:
       cherrypy.log('URL:%s Content-Type:%s blacklisted', severity=ERROR)
       return None
@@ -159,13 +158,13 @@ class PrintFavicon(BaseHandler):
 
     try:
       rootDomainFaviconResult = self.open(rootIconPath, start)
-      rootIcon = self.validateIconResponse(rootDomainFaviconResult)
+      rootIcon = self.validateIcon(rootDomainFaviconResult)
 
       if rootIcon:
         cherrypy.log('Found favicon for domain:%s at root' % domain,
                      severity=DEBUG)
 
-        self.cacheIconLoc(domain, rootIconPath)
+        self.cacheIcon(domain, rootIconPath)
         rootIcon.location = rootIconPath
         return rootIcon
 
@@ -203,13 +202,13 @@ class PrintFavicon(BaseHandler):
                                               start,
                                               headers=headers)
 
-            pageIcon = self.validateIconResponse(pagePathFaviconResult)
+            pageIcon = self.validateIcon(pagePathFaviconResult)
             if pageIcon:
               cherrypy.log('Found favicon at:%s for domain:%s' % \
                            (pageIconPath, domain),
                            severity=DEBUG)
 
-              self.cacheIconLoc(domain, pageIconPath)
+              self.cacheIcon(domain, pageIconPath)
               pageIcon.location = pageIconPath
               return pageIcon
 
@@ -250,15 +249,15 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Error extracting favicon from page:%s, err:%s' % \
                    (path, e), severity=ERROR)
 
-  def cacheIconLoc(self, domain, loc):
-    cherrypy.log('Caching location:%s for domain:%s' % (loc, domain),
-                 severity=DEBUG)
+  def cacheIcon(self, domain, location):
+    '''Used to cache to self.mc'''
+    key = globals.KEY_FORMAT % str(domain)
+    cherrypy.log('key=%s, value=%s' % (key, location), severity=DEBUG)
 
-    if not self.mc.set('icon_loc-%s' % str(domain),
-                       str(loc),
-                       time=globals.MC_CACHE_TIME):
-      cherrypy.log('Could not cache icon location for domain:%s' % domain,
-                   severity=ERROR)
+    ret = self.mc.set(key, str(location),
+        time = globals.MC_CACHE_TIME)
+    if not ret:
+      cherrypy.log('key=%s, value=%s : could not cache', severity=ERROR)
 
   def iconInCache(self, targetDomain, start):
     icon_loc = self.mc.get('icon_loc-%s' % targetDomain)
@@ -275,7 +274,7 @@ class PrintFavicon(BaseHandler):
       else:
         try:
           iconResult = self.open(icon_loc, start)
-          icon = self.validateIconResponse(iconResult)
+          icon = self.validateIcon(iconResult)
         except TimeoutError as e:
           cherrypy.log("TimeoutError: %s" % e, severity=ERROR)
           return None
@@ -406,7 +405,7 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('Falling back to default icon for:%s' % targetDomain,
                    severity=DEBUG)
 
-      self.cacheIconLoc(targetDomain, globals.DEFAULT_FAVICON_LOC)
+      self.cacheIcon(targetDomain, globals.DEFAULT_FAVICON_LOC)
       self.mc.incr('counter-defaults')
       icon = self.default_icon
 
