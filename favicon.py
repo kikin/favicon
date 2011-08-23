@@ -257,8 +257,7 @@ class PrintFavicon(BaseHandler):
     key = globals.KEY_FORMAT % str(domain)
     cherrypy.log('key=%s, value=%s' % (key, location), severity=DEBUG)
 
-    ret = self.mc.set(key, str(location),
-        time = globals.MC_CACHE_TIME)
+    ret = self.mc.set(key, str(location), time = globals.MC_CACHE_TIME)
     if not ret:
       cherrypy.log('key=%s, value=%s : could not cache', severity=ERROR)
 
