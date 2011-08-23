@@ -319,6 +319,16 @@ class PrintFavicon(BaseHandler):
       return '%s://%s' % (urlPieces.scheme, parent)
     return None
 
+  def wwwLocation(self, url):
+    urlPieces = urlparse.urlparse(self.urldecode(url))
+    if not urlPieces.netloc or not urlPieces.scheme:
+      cherrypy.log('URL:%s, wwwLocation:void' % url, severity=DEBUG)
+      return None
+
+    www = '%s://www.%s' % (urlPieces.scheme, urlPieces.netloc)
+    cherrypy.log('URL:%s, wwwLocation:%s' % (urlPieces.netloc, www), severity=DEBUG)
+    return www
+
 
   def parse(self, url):
     # Get page path
@@ -387,17 +397,25 @@ class PrintFavicon(BaseHandler):
       cherrypy.log('URL:%s, Unexpected IOError %s' % (url,e), severity=WARN)
 
     #set up parentDomain
-    if self.parentLocation(redirectedDomain):
-      parentDomain = self.parentLocation(redirectedDomain)
-    else:
+    parentDomain = self.parentLocation(redirectedDomain)
+    if not parentDomain:
       parentDomain = self.parentLocation(targetDomain)
+    #fall through if still can't reach a parent from targetDomain
+    if not parentDomain:
+      parentDomain = redirectedDomain
+
+    # set up www.%s as last resort
+    wwwDomain = self.wwwLocation(redirectedDomain)
 
     #extra lines from previous --
     #last line is for sites like blogger.com at the time of this writing
     icon = (not skipCache and self.iconInCache(redirectedDomain, start)) or \
            self.iconInPage(redirectedDomain, redirectedPath, start) or \
            self.iconAtRoot(redirectedDomain, start) or \
+           self.iconInPage(parentDomain, parentDomain, start) or \
            self.iconAtRoot(parentDomain, start) or \
+           self.iconInPage(wwwDomain, wwwDomain, start) or \
+           self.iconAtRoot(wwwDomain, start) or \
            self.iconAtRoot(targetDomain, start)
 
     if not icon:
