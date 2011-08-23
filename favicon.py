@@ -395,9 +395,9 @@ class PrintFavicon(BaseHandler):
     #just like self.parse()
     redirectedPath, redirectedDomain = targetPath, targetDomain
     parentDomain = targetDomain
-    temp_opener = build_opener()
+    temp_opener = urllib2.build_opener()
     try:
-      temp_result = temp_opener.open(Request(targetDomain, headers=globals.HEADERS),
+      temp_result = temp_opener.open(urllib2.Request(targetDomain, headers=globals.HEADERS),
                 timeout=globals.CONNECTION_TIMEOUT)
       if temp_result.url:
         redirectedPath, redirectedDomain = self.parse(str(temp_result.url))
