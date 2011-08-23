@@ -324,7 +324,9 @@ class PrintFavicon(BaseHandler):
     if not urlPieces.netloc or not urlPieces.scheme:
       cherrypy.log('URL:%s, wwwLocation:void' % url, severity=DEBUG)
       return None
-
+    if 'www' in urlPieces.netloc:
+      cherrypy.log('URL:%s already has www' % url, severity=DEBUG)
+      return url
     www = '%s://www.%s' % (urlPieces.scheme, urlPieces.netloc)
     cherrypy.log('URL:%s, wwwLocation:%s' % (urlPieces.netloc, www), severity=DEBUG)
     return www
@@ -388,6 +390,15 @@ class PrintFavicon(BaseHandler):
 
     targetPath, targetDomain = self.parse(str(url))
 
+    cachedForTarget = (not skipCache and self.iconInCache(targetDomain, start))
+
+    if cachedForTarget:
+      cherrypy.log('URL:%s, cached already' % targetDomain, severity=INFO)
+      cherrypy.log('URL:%s, time taken to process: %f' % \
+          (targetDomain, time() - start),
+          severity=INFO)
+      return self.writeIcon(cachedForTarget)
+
     #follow redirect for targetDomain -- ought to be in a separate function,
     #just like self.parse()
     redirectedPath, redirectedDomain = targetPath, targetDomain
@@ -417,6 +428,11 @@ class PrintFavicon(BaseHandler):
            self.iconInPage(wwwDomain, wwwDomain, start) or \
            self.iconAtRoot(wwwDomain, start) or \
            self.iconAtRoot(targetDomain, start)
+
+    if icon:
+      #cache in both places
+      self.cacheIcon(targetDomain, icon.location)
+      self.cacheIcon(redirectedDomain, icon.location)
 
     if not icon:
       cherrypy.log('URL:%s, falling back to default icon' % targetDomain,
