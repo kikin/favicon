@@ -28,7 +28,7 @@ def libmagic(string):
   mime = image/x-ico(n)
   Browsers want '''
   process = subprocess.Popen(globals.FILECOMMAND,
-            stdin=subprocess.PIPE,stdout=subprocess.PIPE)
+            stdin=subprocess.PIPE,stdout=subprocess.PIPE, close_fds=True)
   out, err = process.communicate(input=string)
   file, mime, charset = filter(lambda string: string, re.split("[\s:;]",out))
 
