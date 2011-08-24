@@ -27,7 +27,7 @@ def libmagic(string):
   '''Example out= '/dev/stdin: image/x-ico; charset=binary'
   mime = image/x-ico(n)
   Browsers want '''
-  process = subprocess.Popen(globals.FILECOMMAND_BSD,
+  process = subprocess.Popen(globals.FILECOMMAND,
             stdin=subprocess.PIPE,stdout=subprocess.PIPE)
   out, err = process.communicate(input=string)
   file, mime, charset = filter(lambda string: string, re.split("[\s:;]",out))

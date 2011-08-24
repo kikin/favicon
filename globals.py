@@ -1,3 +1,4 @@
+import sys
 import re
 
 ICON_MIMETYPE_BLACKLIST = [
@@ -24,5 +25,16 @@ HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US; ' +
 FILECOMMAND_BSD = ['file','-','-I']
 FILECOMMAND_SYSV = ['file','-','-i']
 
+if sys.platform.startswith('linux'):
+  FILECOMMAND = FILECOMMAND_SYSV
+elif sys.platform.startswith('darwin'):
+  FILECOMMAND = FILECOMMAND_BSD
+else:
+  print "missing platform: %s, defaulting to SYSV" % sys.platform
+  FILECOMMAND = FILECOMMAND_SYSV
+
+
 CONNECTION_TIMEOUT = 10
 TIMEOUT = 15
+
+# vim: sts=2:sw=2:ts=2:tw=85:cc=85
