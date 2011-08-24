@@ -1,54 +1,92 @@
-from multiprocessing import Pool
-from IPython.core.interactiveshell import getoutput
-import urlparse
+from StringIO import StringIO
+import multiprocessing
 import os.path
+import shutil
+import signal
+import subprocess
+#import sys
+import time
+import urlparse
 
-#send multiple requests to localhost:8080/ with lines from a file
-def f(param):
-    modified_param = param.replace("://",".")
-    searchquery = "curl -s http://localhost:8080/s/?url=%s&skipCache=true" % param
-    #searchquery = "curl http://localhost:8080/s/?url=%s -o results/%s.ico" % (param, modified_param)
-    f = open("results/%s.ico" % modified_param, "wb")
-    result = getoutput(searchquery)
-    f.write(result)
-    f.close()
-    print("done with %s" % param)
+FAVICON_LOCAL_SEARCHQUERY = "http://localhost:8080/s/?url=%s&skipCache=true"
+FAVICON_KIKIN_SEARCHQUERY = "http://fav.us.kikin.com/s/?url=%s&skipCache=true"
+GOOGLE_SEARCHQUERY = "http://www.google.com/s2/favicons?domain=%s"
 
-#send requests to google.com/s2/favicon
-def g(param):
-    modified_param = param.replace("://",".")
-    pieces = urlparse.urlparse(param)
-    searchquery = "curl http://www.google.com/s2/favicons?domain=%s -o results_s2/%s.ico" % (pieces.netloc, modified_param)
-    #print "%s%s"  % (param.ljust(40,' '), pieces.netloc.rjust(20,' '))
+#http://code.activestate.com/recipes/307871-timing-out-function/
+class TimedOutExc(Exception):
+    def __init__(self, value = "Timed Out"):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
 
-    print getoutput( searchquery )
-    print("done with %s" % param)
+def timed_out(timeout):
+    def decorate(f):
+        def handler(signum, frame):
+            raise TimedOutExc()
 
-#send requests to getfavicon.com/?url=
-def h(param):
-    modified_param = param.replace("://",".")
-    pieces = urlparse.urlparse(param)
-    print pieces.netloc
-    #searchquery = "curl http://www.getfavicon.org/results.php\?url\=%s/favicon.png  -o results_getfavicon/%s.ico" % (pieces.netloc, modified_param)
-    searchquery = "curl http://www.getfavicon.org/?url=%s/favicon.png -o results_getfavicon/%s.ico >/dev/null" % (pieces.netloc, modified_param)
-    print searchquery
+        def new_f(*args, **kwargs):
+            old = signal.signal(signal.SIGALRM, handler)
+            signal.alarm(timeout)
+            try:
+                result = f(*args, **kwargs)
+            finally:
+                signal.signal(signal.SIGALRM, old)
+            signal.alarm(0)
+            return result
+
+        new_f.func_name = f.func_name
+        return new_f
+
+    return decorate
+
+def wrap_keyboard(f):
+    def new_f(*args, **kwargs):
+        try:
+            return f(*args, **kwargs)
+        except KeyboardInterrupt:
+            return
+    new_f.func_name = f.func_name
+    return new_f
+
+@timed_out(10)
+def curl(url, file_out):
+    process = subprocess.Popen(['curl', '-s', url], stdout=subprocess.PIPE,
+            close_fds=True)
+    out, err = process.communicate()
+    out = StringIO(out)
+    shutil.copyfileobj(out, file_out)
+    signal.alarm(0)
+
+def getfile(url, modelquery=FAVICON_LOCAL_SEARCHQUERY):
+    urlpieces = urlparse.urlparse(url)
+
+    modified_netloc = urlpieces.netloc.replace("://",".")
+    searchquery = modelquery % urlpieces.netloc
+    f = open("results/%s.ico" % modified_netloc, "wb")
     try:
-        print getoutput( searchquery )
-        print getoutput( "file results_getfavicon/%s.ico" % modified_param)
-    except Exception:
-        print "oh well"
-    print("done with %s" % param)
+        curl(searchquery, f)
+        print "done with %s" % urlpieces.netloc
+    except TimedOutExc:
+        print "timed out: %s" % modified_netloc
 
-
-#send requests to getfavicon.org
-
-wordlist = [line.strip() for line in open("topsites.txt")]
+def init_worker():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 if __name__=='__main__':
-    for path in ["results_s2", "results", "results_getfavicon"]:
+    wordlist = [line.strip() for line in open("topsites.txt")]
+
+    for path in ["results"]:
         if not os.path.exists(path):
             os.mkdir(path)
 
-    p = Pool(processes=3)
-    result = p.map(f, wordlist)
+    p = multiprocessing.Pool(processes=10, initializer=init_worker)
+    results = p.map_async(getfile, wordlist[:10], chunksize=10)
+    try:
+        while not results.ready():
+            time.sleep(5)
+    except KeyboardInterrupt:
+        print 'caught KeyboardInterrupt'
+        p.terminate()
+        p.join()
 
+# vim: sts=4:sw=4:ts=4:tw=85:cc=85
