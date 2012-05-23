@@ -453,6 +453,15 @@ class PrintFavicon(BaseHandler):
           (targetDomain, timeTaken),
           severity=INFO)
 
+    cherrypy.log("URL:%s" % icon.location, \
+        severity=INFO)
+
+    if globals.DEFAULT_FAVICON_LOC == icon.location:
+      cherrypy.log("URL:%s, Can't find Favicon! Initiating 404" % url, \
+          severity=WARN)
+      raise cherrypy.HTTPError(status=404, message="Did not find favicon for %s" % \
+          url)
+
     return self.writeIcon(icon)
 
 
