@@ -375,13 +375,11 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Evicted cache entry for %s' % targetDomain, severity=INFO)
 
   @cherrypy.expose
-  def s(self, url, skipCache='false'):
+  def s(self, url, skipCache='false', raiseError='false'):
     start = time()
 
-    if skipCache.lower() == 'true':
-      skipCache = True
-    else:
-      skipCache = False
+    skipCache = True if skipCache.lower() == 'true' else False
+    raiseError = True if raiseError.lower() == 'true' else False
 
     cherrypy.log('Incoming request:%s (skipCache=%s)' % (url, skipCache),
                  severity=DEBUG)
@@ -389,15 +387,6 @@ class PrintFavicon(BaseHandler):
     self.mc.incr('counter-requests')
 
     targetPath, targetDomain = self.parse(str(url))
-
-    cachedForTarget = (not skipCache and self.iconInCache(targetDomain, start))
-
-    if cachedForTarget:
-      cherrypy.log('URL:%s, cached already' % targetDomain, severity=INFO)
-      cherrypy.log('URL:%s, time taken to process: %f' % \
-          (targetDomain, time() - start),
-          severity=INFO)
-      return self.writeIcon(cachedForTarget)
 
     #follow redirect for targetDomain -- ought to be in a separate function,
     #just like self.parse()
@@ -456,7 +445,7 @@ class PrintFavicon(BaseHandler):
     cherrypy.log("URL:%s" % icon.location, \
         severity=INFO)
 
-    if globals.DEFAULT_FAVICON_LOC == icon.location:
+    if raiseError and globals.DEFAULT_FAVICON_LOC == icon.location:
       cherrypy.log("URL:%s, Can't find Favicon! Initiating 404" % url, \
           severity=WARN)
       raise cherrypy.HTTPError(status=404, message="Did not find favicon for %s" % \
