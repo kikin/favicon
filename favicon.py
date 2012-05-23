@@ -375,11 +375,11 @@ class PrintFavicon(BaseHandler):
     cherrypy.log('Evicted cache entry for %s' % targetDomain, severity=INFO)
 
   @cherrypy.expose
-  def s(self, url, skipCache='false', raiseError='false'):
+  def s(self, url, skipCache='false', defaultFavicon='true'):
     start = time()
 
     skipCache = True if skipCache.lower() == 'true' else False
-    raiseError = True if raiseError.lower() == 'true' else False
+    defaultFavicon = True if defaultFavicon.lower() == 'true' else False
 
     cherrypy.log('Incoming request:%s (skipCache=%s)' % (url, skipCache),
                  severity=DEBUG)
@@ -445,7 +445,7 @@ class PrintFavicon(BaseHandler):
     cherrypy.log("URL:%s" % icon.location, \
         severity=INFO)
 
-    if raiseError and globals.DEFAULT_FAVICON_LOC == icon.location:
+    if not defaultFavicon and globals.DEFAULT_FAVICON_LOC == icon.location:
       cherrypy.log("URL:%s, Can't find Favicon! Initiating 404" % url, \
           severity=WARN)
       raise cherrypy.HTTPError(status=404, message="Did not find favicon for %s" % \
